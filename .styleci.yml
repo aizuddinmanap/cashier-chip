@@ -1,0 +1,9 @@
+preset: laravel
+
+disabled:
+  - length_ordered_imports
+
+finder:
+  exclude:
+    - "tests"
+    - "workbench" 
