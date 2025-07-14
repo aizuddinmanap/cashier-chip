@@ -4,17 +4,17 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 [![License](https://img.shields.io/packagist/l/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 
-Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment services. It handles almost all of the boilerplate subscription billing code you are dreading writing. In addition to basic subscription management, Cashier can handle coupons, swapping subscription, subscription "quantities", cancellation grace periods, and even generate invoice PDFs.
+Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. Following Laravel Cashier patterns, it handles subscription management, one-time payments, webhooks, and customer management with a clean, Laravel-native API.
 
 ## Features
 
-- 💳 **Complete Payment Support** - Cards, FPX, e-wallets, DuitNow QR
-- 🔄 **Subscription Management** - Recurring billing with trials and grace periods
+- 🔄 **Subscription Management** - Complete subscription lifecycle with trials, grace periods, and cancellations
+- 💳 **One-time Payments** - Cards, FPX, e-wallets, and DuitNow QR support
 - 🏦 **FPX Integration** - Real-time Malaysian banking with 18+ banks
-- 💰 **Refunds & Tokens** - Full refund support and token management
-- 🔒 **Webhook Security** - HMAC signature verification
-- 📊 **Real-time Status** - Live FPX bank availability
-- 🚀 **Laravel Native** - Follows Laravel Cashier patterns
+- 🔒 **Webhook Security** - Automatic HMAC signature verification
+- 💰 **Transaction Management** - Full refund support and transaction tracking
+- 🎯 **Laravel Cashier Compatible** - Familiar API patterns and method signatures
+- 🚀 **Auto-Configuration** - Automatic middleware registration and service setup
 
 ## Requirements
 
@@ -32,35 +32,34 @@ composer require aizuddinmanap/cashier-chip
 
 ### Database Migrations
 
-Publish and run the migrations to add the necessary columns to your users table and create the subscription tables:
+Publish and run the migrations:
 
 ```bash
-php artisan vendor:publish --tag="cashier-chip-migrations"
+php artisan vendor:publish --tag="cashier-migrations"
 php artisan migrate
 ```
 
-**Important**: The package includes the following migrations:
-- `add_chip_customer_columns` - Adds Chip customer fields to users table
-- `create_subscriptions_table` - Creates subscriptions table
-- `create_subscription_items_table` - Creates subscription items table
-- `create_transactions_table` - Creates transactions table
-- `create_payments_table` - Creates payments table (required for payment tracking)
+This creates the following tables:
+- `customers` - Customer records linked to your billable models
+- `subscriptions` - Subscription management
+- `subscription_items` - Subscription line items
+- `transactions` - Payment and refund records
 
 ### Configuration
 
 Publish the configuration file:
 
 ```bash
-php artisan vendor:publish --tag="cashier-chip-config"
+php artisan vendor:publish --tag="cashier-config"
 ```
 
 Add your Chip credentials to your `.env` file:
 
 ```env
-CHIP_BRAND_ID=your_brand_id
 CHIP_API_KEY=your_api_key
-CHIP_ENDPOINT=https://gate.chip-in.asia/api/v1
+CHIP_BRAND_ID=your_brand_id
 CHIP_WEBHOOK_SECRET=your_webhook_secret
+CASHIER_CURRENCY=MYR
 ```
 
 ### Billable Model
@@ -88,62 +87,25 @@ class User extends Authenticatable
 ### One-time Payments
 
 ```php
-// Simple charge (creates payment record and returns Payment model)
-$payment = $user->charge(5000); // RM 50.00 in cents
+// Simple charge
+$user->charge(5000); // RM 50.00 in cents
 
-// Method 1: Create payment record first, then get checkout URL
-$payment = $user->newCharge(10000)
+// Charge with options
+$user->charge(10000, [
+    'currency' => 'MYR',
+    'description' => 'Premium subscription',
+    'metadata' => ['order_id' => '12345']
+]);
+
+// Using payment builder
+$transaction = $user->newCharge(10000)
     ->currency('MYR')
+    ->description('Premium subscription')
     ->withMetadata(['order_id' => '12345'])
     ->create();
 
-echo $payment->url(); // Get checkout URL (calls Chip API)
-
-// Method 2: Get checkout URL directly (more efficient)
-$result = $user->newCharge(10000)
-    ->currency('MYR')
-    ->withMetadata(['order_id' => '12345'])
-    ->checkout();
-
-echo $result['checkout_url']; // Redirect user to checkout
-$payment = $result['payment']; // Access the payment record
-```
-
-#### Payment Methods Explained
-
-**`create()` method:**
-- Creates a payment record in your database
-- Returns a `Payment` model
-- Use `$payment->url()` to get the checkout URL (makes API call)
-- Best for: When you need to store payment details before redirect
-
-**`checkout()` method:**
-- Creates a payment record AND gets checkout URL in one call
-- Returns array with `['payment' => Payment, 'checkout_url' => string]`
-- More efficient for immediate redirects
-- Best for: Direct payment flows
-
-### FPX Payments (Malaysian Banking)
-
-```php
-use Aizuddinmanap\CashierChip\FPX;
-
-// Create FPX payment
-$checkout = FPX::createPayment(10000) // RM 100.00
-    ->fpxBank('maybank2u')
-    ->successUrl(route('payment.success'))
-    ->create();
-
-// Check real-time bank status
-if (FPX::isB2cAvailable()) {
-    // FPX banks are online
-}
-
-// Get all banks with status
-$banks = FPX::getBanksWithStatus();
-foreach ($banks as $code => $bank) {
-    echo "{$bank['name']}: " . ($bank['b2c_available'] ? 'Online' : 'Offline');
-}
+// Get checkout URL
+$checkoutUrl = $transaction->checkout_url;
 ```
 
 ### Subscriptions
@@ -160,56 +122,19 @@ if ($user->subscribed('default')) {
     // User has active subscription
 }
 
-// Subscription with trial
-if ($user->onTrial()) {
+// Check trial status
+if ($user->onTrial('default')) {
     // User is on trial
 }
 
-// Cancel subscription
+// Cancel subscription (with grace period)
 $user->subscription('default')->cancel();
+
+// Cancel immediately
+$user->subscription('default')->cancelNow();
 
 // Resume subscription
 $user->subscription('default')->resume();
-```
-
-## Advanced Usage
-
-### Payment Methods
-
-```php
-// Get available payment methods
-$methods = $user->getAvailablePaymentMethods();
-
-// Check FPX support
-if ($user->supportsFPX()) {
-    $banks = $user->getFPXBanks();
-}
-
-// Get payment methods with real-time status
-$methodsWithStatus = $user->getPaymentMethodsWithStatus();
-```
-
-### Refunds
-
-```php
-// Full refund
-$refund = $user->refund('payment_id');
-
-// Partial refund
-$refund = $user->refund('payment_id', 2500); // Refund RM 25.00
-```
-
-### Token Management
-
-```php
-// Charge with saved token
-$payment = $user->chargeWithToken('purchase_id', [
-    'amount' => 10000,
-    'currency' => 'MYR'
-]);
-
-// Delete recurring token
-$user->deleteRecurringToken('purchase_id');
 ```
 
 ### Customer Management
@@ -226,26 +151,72 @@ $user->updateChipCustomer([
     'full_name' => 'John Updated'
 ]);
 
-// Find existing customer by email
-$existing = $user->findChipCustomerByEmail('john@example.com');
+// Get customer
+$customer = $user->asChipCustomer();
+```
+
+## Advanced Usage
+
+### FPX Payments (Malaysian Banking)
+
+```php
+use Aizuddinmanap\CashierChip\FPX;
+
+// Create FPX payment
+$transaction = $user->charge(10000, [
+    'payment_method' => 'fpx',
+    'fpx_bank' => 'maybank2u'
+]);
+
+// Check real-time bank availability
+if (FPX::isB2cAvailable()) {
+    $banks = FPX::getSupportedBanks();
+}
+
+// Get banks with status
+$banksWithStatus = FPX::getBanksWithStatus();
+```
+
+### Transaction Management
+
+```php
+// Find transaction
+$transaction = $user->findTransaction('txn_123');
+
+// Get all transactions
+$transactions = $user->transactions()->get();
+
+// Refund transaction
+$refund = $user->refund('txn_123', 2500); // Partial refund RM 25.00
+
+// Full refund
+$refund = $user->refund('txn_123');
+```
+
+### Subscription Queries
+
+```php
+// Active subscriptions
+$active = $user->subscriptions()->active()->get();
+
+// Cancelled subscriptions
+$cancelled = $user->subscriptions()->cancelled()->get();
+
+// Subscriptions on trial
+$onTrial = $user->subscriptions()->onTrial()->get();
+
+// Subscriptions on grace period
+$onGrace = $user->subscriptions()->onGracePeriod()->get();
 ```
 
 ## Webhooks
 
-### Setup
+### Automatic Setup
 
-Add the webhook route to your `routes/web.php`:
+Webhooks are automatically configured with secure signature verification. The webhook endpoint is automatically registered at:
 
-```php
-Route::post(
-    '/chip/webhook',
-    [Aizuddinmanap\CashierChip\Http\Controllers\WebhookController::class, 'handleWebhook']
-);
 ```
-
-Configure your webhook URL in the Chip dashboard:
-```
-https://your-domain.com/chip/webhook
+POST /chip/webhook
 ```
 
 ### Webhook Events
@@ -255,6 +226,7 @@ Listen for webhook events in your `EventServiceProvider`:
 ```php
 use Aizuddinmanap\CashierChip\Events\WebhookReceived;
 use Aizuddinmanap\CashierChip\Events\TransactionCompleted;
+use Aizuddinmanap\CashierChip\Events\SubscriptionUpdated;
 
 protected $listen = [
     WebhookReceived::class => [
@@ -263,6 +235,58 @@ protected $listen = [
     TransactionCompleted::class => [
         // Handle completed transactions
     ],
+    SubscriptionUpdated::class => [
+        // Handle subscription updates
+    ],
+];
+```
+
+### Webhook Commands
+
+Manage webhooks using Artisan commands:
+
+```bash
+# List all webhooks
+php artisan cashier:webhook list
+
+# Create new webhook
+php artisan cashier:webhook create
+
+# Delete webhook
+php artisan cashier:webhook delete
+```
+
+## Configuration
+
+The configuration file (`config/cashier.php`) provides comprehensive settings:
+
+```php
+return [
+    // Chip API Configuration
+    'chip' => [
+        'api_key' => env('CHIP_API_KEY'),
+        'brand_id' => env('CHIP_BRAND_ID'),
+        'api_url' => env('CHIP_API_URL', 'https://gate.chip-in.asia/api/v1'),
+    ],
+
+    // Webhook Configuration
+    'webhook' => [
+        'secret' => env('CHIP_WEBHOOK_SECRET'),
+        'tolerance' => env('CHIP_WEBHOOK_TOLERANCE', 300),
+    ],
+
+    // Currency Settings
+    'currency' => env('CASHIER_CURRENCY', 'MYR'),
+    'currency_locale' => env('CASHIER_CURRENCY_LOCALE', 'ms_MY'),
+
+    // Model Configuration
+    'model' => env('CASHIER_MODEL', App\Models\User::class),
+
+    // Path Configuration
+    'path' => env('CASHIER_PATH', 'chip'),
+
+    // Test Mode
+    'test_mode' => env('CHIP_TEST_MODE', false),
 ];
 ```
 
@@ -271,7 +295,7 @@ protected $listen = [
 ### Supported Banks
 
 - Maybank2U
-- CIMB Clicks  
+- CIMB Clicks
 - Public Bank
 - RHB Bank
 - Hong Leong Bank
@@ -296,34 +320,14 @@ use Aizuddinmanap\CashierChip\FPX;
 
 // Check system status
 $status = FPX::getSystemStatus();
-/*
-[
-    'b2c' => [
-        'available' => true,
-        'status' => ['status' => 'online'],
-        'description' => 'Business to Consumer (Personal Banking)'
-    ],
-    'b2b1' => [
-        'available' => true,
-        'status' => ['status' => 'online'], 
-        'description' => 'Business to Business Level 1 (Corporate Banking)'
-    ],
-    'checked_at' => '2024-01-01T12:00:00Z'
-]
-*/
 
 // Check specific availability
-FPX::isB2cAvailable();  // Personal banking
-FPX::isB2b1Available(); // Corporate banking
+$b2cAvailable = FPX::isB2cAvailable();  // Personal banking
+$b2b1Available = FPX::isB2b1Available(); // Corporate banking
+
+// Get banks with real-time status
+$banks = FPX::getBanksWithStatus();
 ```
-
-### Payment Limits & Fees
-
-- **Minimum**: RM 1.00
-- **Maximum**: RM 30,000.00
-- **B2C Fee**: RM 1.00 per transaction
-- **B2B1 Fee**: RM 2.00 per transaction
-- **Settlement**: Next business day
 
 ## Testing
 
@@ -338,23 +342,10 @@ composer test
 Set up test environment variables:
 
 ```env
-CHIP_BRAND_ID=test_brand_id
 CHIP_API_KEY=test_api_key
-CHIP_ENDPOINT=https://api.test.chip-in.asia/api/v1
+CHIP_BRAND_ID=test_brand_id
 CHIP_WEBHOOK_SECRET=test_webhook_secret
-```
-
-### Mocking API Responses
-
-```php
-use Illuminate\Support\Facades\Http;
-
-Http::fake([
-    'api.test.chip-in.asia/*' => Http::response([
-        'id' => 'purchase_123',
-        'checkout_url' => 'https://checkout.chip-in.asia/123'
-    ]),
-]);
+CHIP_TEST_MODE=true
 ```
 
 ## API Reference
@@ -364,46 +355,41 @@ Http::fake([
 | Method | Description |
 |--------|-------------|
 | `charge($amount, $options)` | Create one-time payment |
-| `newCharge($amount, $options)` | Create payment builder |
-| `refund($paymentId, $amount)` | Refund payment |
-| `chargeWithToken($purchaseId, $options)` | Charge with saved token |
+| `newCharge($amount)` | Create payment builder |
+| `refund($transactionId, $amount)` | Refund transaction |
+| `findTransaction($id)` | Find transaction by ID |
+| `transactions()` | Get transaction relationship |
 | `newSubscription($type, $price)` | Create subscription builder |
 | `subscription($type)` | Get subscription |
 | `subscribed($type)` | Check if subscribed |
-| `onTrial()` | Check if on trial |
+| `onTrial($type)` | Check if on trial |
 | `createAsChipCustomer($data)` | Create Chip customer |
 | `updateChipCustomer($data)` | Update customer |
-| `getAvailablePaymentMethods()` | Get payment methods |
-| `supportsFPX()` | Check FPX support |
-| `getFPXBanks()` | Get FPX banks |
-| `isPaymentMethodAvailable($type)` | Check method availability |
+| `asChipCustomer()` | Get Chip customer |
+| `hasChipId()` | Check if has Chip customer ID |
 
-### FPX Methods
+### Subscription Builder Methods
 
 | Method | Description |
 |--------|-------------|
-| `FPX::createPayment($amount, $currency)` | Create FPX payment |
-| `FPX::getSupportedBanks()` | Get all banks |
-| `FPX::getPopularBanks()` | Get popular banks |
-| `FPX::isB2cAvailable()` | Check B2C status |
-| `FPX::isB2b1Available()` | Check B2B1 status |
-| `FPX::getSystemStatus()` | Get full status |
-| `FPX::getBanksWithStatus()` | Get banks with status |
-| `FPX::validateAmount($amount)` | Validate amount |
+| `trialDays($days)` | Set trial period |
+| `trialUntil($date)` | Set trial end date |
+| `skipTrial()` | Skip trial period |
+| `quantity($quantity)` | Set quantity |
+| `withMetadata($metadata)` | Add metadata |
+| `withOptions($options)` | Add options |
+| `create()` | Create subscription |
+| `add()` | Add to existing subscription |
 
-## Configuration Options
+### Transaction Builder Methods
 
-```php
-// config/cashier-chip.php
-return [
-    'brand_id' => env('CHIP_BRAND_ID'),
-    'api_key' => env('CHIP_API_KEY'),
-    'endpoint' => env('CHIP_ENDPOINT', 'https://gate.chip-in.asia/api/v1'),
-    'webhook_secret' => env('CHIP_WEBHOOK_SECRET'),
-    'currency' => 'MYR',
-    'logger' => null, // Set logging channel
-];
-```
+| Method | Description |
+|--------|-------------|
+| `currency($currency)` | Set currency |
+| `description($description)` | Set description |
+| `withMetadata($metadata)` | Add metadata |
+| `withOptions($options)` | Add options |
+| `create()` | Create transaction |
 
 ## Migration from Other Providers
 
@@ -412,9 +398,11 @@ return [
 ```php
 // Stripe
 $user->charge(5000, ['currency' => 'myr']);
+$user->newSubscription('default', 'price_123')->create();
 
 // Chip equivalent  
 $user->charge(5000, ['currency' => 'MYR']);
+$user->newSubscription('default', 'price_123')->create();
 ```
 
 ### From Laravel Cashier Paddle
@@ -427,6 +415,18 @@ $user->newSubscription('default', 'plan_123')->create();
 $user->newSubscription('default', 'price_123')->create();
 ```
 
+## Laravel Cashier Compatibility
+
+This package follows Laravel Cashier patterns and provides compatible method signatures:
+
+- ✅ `Billable` trait with standard methods
+- ✅ Subscription management with trials and grace periods
+- ✅ Customer model with morphed relationships
+- ✅ Automatic webhook handling with signature verification
+- ✅ Transaction management with refund support
+- ✅ Query scopes for subscriptions and transactions
+- ✅ Fluent builder patterns for payments and subscriptions
+
 ## Contributing
 
 Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
@@ -434,42 +434,6 @@ Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
 ## Security
 
 If you discover any security related issues, please email security@aizuddinmanap.com instead of using the issue tracker.
-
-## Troubleshooting
-
-### Installation Issues
-
-If you encounter problems after installation:
-
-1. **Run the verification script**:
-   ```bash
-   php artisan tinker
-   # Then paste the contents of verify-installation.php
-   ```
-
-2. **Check for missing payments table**:
-   ```bash
-   php artisan migrate:status
-   # Look for 2024_01_01_000005_create_payments_table
-   ```
-
-3. **Common fixes**:
-   ```bash
-   # Republish and run migrations
-   php artisan vendor:publish --tag="cashier-chip-migrations" --force
-   php artisan migrate
-
-   # Clear config cache
-   php artisan config:clear
-   ```
-
-### Known Issues
-
-- **Missing payments table**: Fixed in our version, but original package was missing this critical migration
-- **Method name errors**: Use `withMetadata()` not `metadata()`
-- **API configuration**: Ensure all config keys match what's in `config/cashier-chip.php`
-
-For detailed issue analysis, see [LIBRARY_ASSESSMENT.md](LIBRARY_ASSESSMENT.md).
 
 ## Credits
 
