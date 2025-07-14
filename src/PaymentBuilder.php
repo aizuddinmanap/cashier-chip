@@ -45,7 +45,7 @@ class PaymentBuilder
     {
         $this->billable = $billable;
         $this->amount = $amount;
-        $this->currency = $options['currency'] ?? config('cashier-chip.currency', 'myr');
+        $this->currency = $options['currency'] ?? config('cashier.currency', 'myr');
         $this->options = $options;
     }
 
@@ -148,7 +148,7 @@ class PaymentBuilder
         $response = $checkout->create();
 
         // Create the payment record
-        $payment = $this->billable->payments()->create([
+        $payment = $this->billable->transactions()->create([
             'id' => $response['id'] ?? 'pay_' . uniqid(),
             'chip_id' => $response['id'] ?? 'chip_' . uniqid(),
             'amount' => $this->amount,

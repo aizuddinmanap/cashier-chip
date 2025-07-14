@@ -147,7 +147,7 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         // Create a payment record
-        $payment = $this->user->payments()->create([
+        $payment = $this->user->transactions()->create([
             'id' => 'pay_123',
             'chip_id' => 'purchase_123',
             'amount' => 10000,

@@ -231,7 +231,7 @@ class Checkout
                 'currency' => strtoupper($this->data['currency'] ?? 'MYR'),
                 'products' => $this->buildProducts(),
             ],
-            'brand_id' => config('cashier-chip.brand_id'),
+            'brand_id' => config('cashier.chip.brand_id'),
             'success_redirect' => $this->data['success_url'] ?? config('app.url') . '/payment/success',
             'failure_redirect' => $this->data['cancel_url'] ?? config('app.url') . '/payment/cancel',
         ];

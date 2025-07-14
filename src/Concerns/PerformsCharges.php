@@ -106,21 +106,5 @@ trait PerformsCharges
         return $this->morphMany(Transaction::class, 'billable')->orderByDesc('created_at');
     }
 
-    /**
-     * Legacy method - Find a payment by its ID.
-     * @deprecated Use findTransaction instead
-     */
-    public function findPayment(string $paymentId): ?Transaction
-    {
-        return $this->findTransaction($paymentId);
-    }
 
-    /**
-     * Legacy method - Get all payments for the billable entity.
-     * @deprecated Use transactions instead
-     */
-    public function payments()
-    {
-        return $this->transactions();
-    }
 } 

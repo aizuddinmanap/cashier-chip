@@ -28,16 +28,10 @@ class ChipServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Register new configuration (preferred)
+        // Register configuration
         $this->mergeConfigFrom(
             __DIR__.'/../config/cashier.php',
             'cashier'
-        );
-
-        // Register legacy configuration for backward compatibility
-        $this->mergeConfigFrom(
-            __DIR__.'/../config/cashier-chip.php',
-            'cashier-chip'
         );
 
         // Register middleware alias
@@ -51,7 +45,7 @@ class ChipServiceProvider extends ServiceProvider
     {
         if (Cashier::$registersRoutes) {
             Route::group([
-                'prefix' => config('cashier.path', config('cashier-chip.path', 'chip')),
+                'prefix' => config('cashier.path', 'chip'),
                 'namespace' => 'Aizuddinmanap\CashierChip\Http\Controllers',
                 'as' => 'cashier.',
             ], function () {
@@ -81,16 +75,8 @@ class ChipServiceProvider extends ServiceProvider
             ], 'cashier-config');
 
             $this->publishes([
-                __DIR__.'/../config/cashier-chip.php' => config_path('cashier-chip.php'),
-            ], 'cashier-chip-config');
-
-            $this->publishes([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'cashier-migrations');
-
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'cashier-chip-migrations');
         }
     }
 

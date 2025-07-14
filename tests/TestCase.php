@@ -42,10 +42,10 @@ abstract class TestCase extends Orchestra
         ]);
 
         // Set up Chip configuration for testing
-        config()->set('cashier-chip.brand_id', 'test_brand_id');
-        config()->set('cashier-chip.chip_api_key', 'test_api_key');
-        config()->set('cashier-chip.chip_api_url', 'https://api.test.chip-in.asia/api/v1');
-        config()->set('cashier-chip.chip_webhook_secret', 'test_webhook_secret');
+        config()->set('cashier.chip.brand_id', 'test_brand_id');
+        config()->set('cashier.chip.api_key', 'test_api_key');
+        config()->set('cashier.chip.api_url', 'https://api.test.chip-in.asia/api/v1');
+        config()->set('cashier.webhook.secret', 'test_webhook_secret');
     }
 
     protected function setUpDatabase(): void

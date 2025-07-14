@@ -34,7 +34,7 @@ class ChipApi
      */
     public function __construct(?string $brandId = null, ?string $apiKey = null, ?string $endpoint = null)
     {
-        $this->brandId = $brandId ?? config('cashier-chip.brand_id');
+        $this->brandId = $brandId ?? config('cashier.chip.brand_id');
         $this->apiKey = $apiKey ?? Cashier::chipApiKey();
         $this->baseUrl = $endpoint ?? Cashier::chipApiUrl();
     }
@@ -135,8 +135,8 @@ class ChipApi
      */
     protected function logRequest(string $method, string $endpoint, array $options, Response $response): void
     {
-        if (config('cashier-chip.logger')) {
-            Log::channel(config('cashier-chip.logger'))->info('Chip API Request', [
+        if (config('cashier.logging.enabled')) {
+            Log::channel(config('cashier.logging.channel'))->info('Chip API Request', [
                 'method' => $method,
                 'endpoint' => $endpoint,
                 'status' => $response->status(),
@@ -150,8 +150,8 @@ class ChipApi
      */
     protected function logError(string $method, string $endpoint, \Throwable $exception): void
     {
-        if (config('cashier-chip.logger')) {
-            Log::channel(config('cashier-chip.logger'))->error('Chip API Error', [
+        if (config('cashier.logging.enabled')) {
+            Log::channel(config('cashier.logging.channel'))->error('Chip API Error', [
                 'method' => $method,
                 'endpoint' => $endpoint,
                 'error' => $exception->getMessage(),

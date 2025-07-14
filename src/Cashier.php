@@ -206,7 +206,7 @@ class Cashier
      */
     public static function chipApiKey(): string
     {
-        return config('cashier.chip_api_key') ?: config('cashier-chip.chip_api_key', '');
+        return config('cashier.chip_api_key', '');
     }
 
     /**
@@ -214,7 +214,7 @@ class Cashier
      */
     public static function chipBrandId(): string
     {
-        return config('cashier.chip_brand_id') ?: config('cashier-chip.chip_brand_id', '');
+        return config('cashier.chip_brand_id', '');
     }
 
     /**
@@ -222,7 +222,7 @@ class Cashier
      */
     public static function chipWebhookSecret(): ?string
     {
-        return config('cashier.chip_webhook_secret') ?: config('cashier-chip.chip_webhook_secret');
+        return config('cashier.chip_webhook_secret');
     }
 
     /**
@@ -230,7 +230,7 @@ class Cashier
      */
     public static function chipApiUrl(): string
     {
-        return config('cashier.chip_api_url') ?: config('cashier-chip.chip_api_url', 'https://gate.chip-in.asia/api/v1');
+        return config('cashier.chip.api_url', 'https://gate.chip-in.asia/api/v1');
     }
 
     /**

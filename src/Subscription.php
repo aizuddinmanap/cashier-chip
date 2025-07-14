@@ -38,7 +38,7 @@ class Subscription extends Model
      */
     public function owner(): BelongsTo
     {
-        $model = config('cashier-chip.model');
+        $model = config('cashier.model');
 
         return $this->belongsTo($model, (new $model)->getForeignKey());
     }

@@ -226,8 +226,8 @@ class WebhookController extends Controller
      */
     protected function logWebhook(string $event, array $payload): void
     {
-        if (config('cashier-chip.logger')) {
-            Log::channel(config('cashier-chip.logger'))->info('Chip Webhook Received', [
+        if (config('cashier.logging.enabled')) {
+            Log::channel(config('cashier.logging.channel'))->info('Chip Webhook Received', [
                 'event' => $event,
                 'payload' => $payload,
             ]);

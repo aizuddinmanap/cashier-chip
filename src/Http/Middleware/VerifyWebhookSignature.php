@@ -43,7 +43,7 @@ class VerifyWebhookSignature
         }
 
         // Check if the timestamp is within the tolerance
-        $tolerance = config('cashier-chip.webhook_tolerance', 300);
+        $tolerance = config('cashier.webhook.tolerance', 300);
         if (abs(time() - $timestamp) > $tolerance) {
             return false;
         }
