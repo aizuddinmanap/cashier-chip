@@ -60,16 +60,21 @@ class Checkout
 
     /**
      * Set the customer for the checkout.
+     * This will clear any client email/name data as they are mutually exclusive.
      */
     public function customer(string $customerId): self
     {
         $this->data['customer_id'] = $customerId;
+        
+        // Clear client email/name as they are mutually exclusive with customer ID
+        unset($this->data['client_email'], $this->data['client_name']);
 
         return $this;
     }
 
     /**
      * Set the client information for the checkout.
+     * This will clear any customer ID as they are mutually exclusive.
      */
     public function client(string $email, ?string $fullName = null): self
     {
@@ -77,6 +82,9 @@ class Checkout
         if ($fullName) {
             $this->data['client_name'] = $fullName;
         }
+        
+        // Clear customer ID as it's mutually exclusive with client details
+        unset($this->data['customer_id']);
 
         return $this;
     }
@@ -236,19 +244,17 @@ class Checkout
             'failure_redirect' => $this->data['cancel_url'] ?? config('app.url') . '/payment/cancel',
         ];
 
-        // Add client information if customer_id is provided
+        // Add client information - prioritize customer_id over client email/name
+        // The Chip API expects either customer ID OR client details, not both
         if (isset($this->data['customer_id'])) {
             $data['client'] = [
                 'id' => $this->data['customer_id'],
             ];
-        }
-
-        // Add client email and name if provided
-        if (isset($this->data['client_email']) || isset($this->data['client_name'])) {
-            $data['client'] = array_merge($data['client'] ?? [], array_filter([
+        } elseif (isset($this->data['client_email']) || isset($this->data['client_name'])) {
+            $data['client'] = array_filter([
                 'email' => $this->data['client_email'] ?? null,
                 'full_name' => $this->data['client_name'] ?? null,
-            ]));
+            ]);
         }
 
         // Add success/failure callbacks for webhooks
