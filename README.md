@@ -39,6 +39,13 @@ php artisan vendor:publish --tag="cashier-chip-migrations"
 php artisan migrate
 ```
 
+**Important**: The package includes the following migrations:
+- `add_chip_customer_columns` - Adds Chip customer fields to users table
+- `create_subscriptions_table` - Creates subscriptions table
+- `create_subscription_items_table` - Creates subscription items table
+- `create_transactions_table` - Creates transactions table
+- `create_payments_table` - Creates payments table (required for payment tracking)
+
 ### Configuration
 
 Publish the configuration file:
@@ -81,17 +88,40 @@ class User extends Authenticatable
 ### One-time Payments
 
 ```php
-// Simple charge
-$user->charge(5000); // RM 50.00 in cents
+// Simple charge (creates payment record and returns Payment model)
+$payment = $user->charge(5000); // RM 50.00 in cents
 
-// Charge with metadata
+// Method 1: Create payment record first, then get checkout URL
 $payment = $user->newCharge(10000)
     ->currency('MYR')
-    ->metadata(['order_id' => '12345'])
+    ->withMetadata(['order_id' => '12345'])
     ->create();
 
-echo $payment->url(); // Redirect user to checkout
+echo $payment->url(); // Get checkout URL (calls Chip API)
+
+// Method 2: Get checkout URL directly (more efficient)
+$result = $user->newCharge(10000)
+    ->currency('MYR')
+    ->withMetadata(['order_id' => '12345'])
+    ->checkout();
+
+echo $result['checkout_url']; // Redirect user to checkout
+$payment = $result['payment']; // Access the payment record
 ```
+
+#### Payment Methods Explained
+
+**`create()` method:**
+- Creates a payment record in your database
+- Returns a `Payment` model
+- Use `$payment->url()` to get the checkout URL (makes API call)
+- Best for: When you need to store payment details before redirect
+
+**`checkout()` method:**
+- Creates a payment record AND gets checkout URL in one call
+- Returns array with `['payment' => Payment, 'checkout_url' => string]`
+- More efficient for immediate redirects
+- Best for: Direct payment flows
 
 ### FPX Payments (Malaysian Banking)
 
@@ -404,6 +434,42 @@ Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
 ## Security
 
 If you discover any security related issues, please email security@aizuddinmanap.com instead of using the issue tracker.
+
+## Troubleshooting
+
+### Installation Issues
+
+If you encounter problems after installation:
+
+1. **Run the verification script**:
+   ```bash
+   php artisan tinker
+   # Then paste the contents of verify-installation.php
+   ```
+
+2. **Check for missing payments table**:
+   ```bash
+   php artisan migrate:status
+   # Look for 2024_01_01_000005_create_payments_table
+   ```
+
+3. **Common fixes**:
+   ```bash
+   # Republish and run migrations
+   php artisan vendor:publish --tag="cashier-chip-migrations" --force
+   php artisan migrate
+
+   # Clear config cache
+   php artisan config:clear
+   ```
+
+### Known Issues
+
+- **Missing payments table**: Fixed in our version, but original package was missing this critical migration
+- **Method name errors**: Use `withMetadata()` not `metadata()`
+- **API configuration**: Ensure all config keys match what's in `config/cashier-chip.php`
+
+For detailed issue analysis, see [LIBRARY_ASSESSMENT.md](LIBRARY_ASSESSMENT.md).
 
 ## Credits
 

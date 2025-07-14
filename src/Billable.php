@@ -25,7 +25,7 @@ trait Billable
      */
     public function transactions()
     {
-        return $this->morphMany(Transaction::class, 'billable')->orderByDesc('created_at');
+        return $this->morphMany(Cashier::transactionModel(), 'billable')->orderByDesc('created_at');
     }
 
     /**
@@ -33,7 +33,23 @@ trait Billable
      */
     public function subscriptions()
     {
-        return $this->hasMany(Subscription::class)->orderByDesc('created_at');
+        return $this->hasMany(Cashier::subscriptionModel())->orderByDesc('created_at');
+    }
+
+    /**
+     * Get the customer associated with the billable entity.
+     */
+    public function customer()
+    {
+        return $this->morphOne(Cashier::customerModel(), 'billable');
+    }
+
+    /**
+     * Create a new subscription builder for the given price.
+     */
+    public function newSubscription(string $name, string $priceId): SubscriptionBuilder
+    {
+        return new SubscriptionBuilder($this, $name, $priceId);
     }
 
     /**
@@ -41,13 +57,27 @@ trait Billable
      */
     public function subscription(string $name = 'default'): ?Subscription
     {
-        return $this->subscriptions->where('name', $name)->first();
+        return $this->subscriptions()->where('name', $name)->first();
+    }
+
+    /**
+     * Determine if the billable entity has any active subscriptions.
+     */
+    public function subscribed(?string $name = null, ?string $priceId = null): bool
+    {
+        $subscription = $this->subscription($name);
+
+        if (! $subscription || ! $subscription->valid()) {
+            return false;
+        }
+
+        return $priceId ? $subscription->hasPlan($priceId) : true;
     }
 
     /**
      * Determine if the billable entity is on trial.
      */
-    public function onTrial(string $name = 'default', ?string $plan = null): bool
+    public function onTrial(string $name = 'default', ?string $priceId = null): bool
     {
         if (func_num_args() === 0 && $this->onGenericTrial()) {
             return true;
@@ -59,7 +89,7 @@ trait Billable
             return false;
         }
 
-        return $plan ? $subscription->hasPlan($plan) : true;
+        return $priceId ? $subscription->hasPlan($priceId) : true;
     }
 
     /**
@@ -71,24 +101,150 @@ trait Billable
     }
 
     /**
-     * Determine if the billable entity has a given subscription.
-     */
-    public function subscribed(string $name = 'default', ?string $plan = null): bool
-    {
-        $subscription = $this->subscription($name);
-
-        if (! $subscription || ! $subscription->valid()) {
-            return false;
-        }
-
-        return $plan ? $subscription->hasPlan($plan) : true;
-    }
-
-    /**
-     * Get the entity's trial end date.
+     * Get the ending date of the trial.
      */
     public function trialEndsAt(): ?\DateTimeInterface
     {
         return $this->trial_ends_at;
+    }
+
+    /**
+     * Determine if the billable entity has a Chip customer ID.
+     */
+    public function hasChipId(): bool
+    {
+        return ! is_null($this->chip_id);
+    }
+
+    /**
+     * Get the Chip customer ID for the billable entity.
+     */
+    public function chipId(): ?string
+    {
+        return $this->chip_id;
+    }
+
+    /**
+     * Create a Chip customer for the billable entity.
+     */
+    public function createAsChipCustomer(array $options = []): Customer
+    {
+        return $this->createAsCustomer($options);
+    }
+
+    /**
+     * Get or create a Chip customer for the billable entity.
+     */
+    public function asChipCustomer(): Customer
+    {
+        if ($this->hasChipId()) {
+            return $this->customer ?: $this->createAsChipCustomer();
+        }
+
+        return $this->createAsChipCustomer();
+    }
+
+    /**
+     * Create a checkout session for the given prices.
+     */
+    public function checkout(array $prices, array $options = []): Checkout
+    {
+        return Checkout::forPrices($prices, $options)->customer($this->chipId());
+    }
+
+    /**
+     * Create a checkout session for a single price.
+     */
+    public function checkoutPrice(string $priceId, array $options = []): Checkout
+    {
+        return $this->checkout([$priceId], $options);
+    }
+
+    /**
+     * Begin creating a new charge for the given amount.
+     */
+    public function tab(string $name = 'default'): PaymentBuilder
+    {
+        return new PaymentBuilder($this, 0);
+    }
+
+    /**
+     * Invoice the billable entity outside of the regular billing cycle.
+     */
+    public function invoice(array $options = []): Invoice
+    {
+        // Implementation for creating invoices
+        // This would integrate with Chip's invoice API
+        throw new \Exception('Invoice creation not yet implemented');
+    }
+
+    /**
+     * Invoice the billable entity for the given amount.
+     */
+    public function invoiceFor(string $description, int $amount, array $options = []): Invoice
+    {
+        // Implementation for creating invoices for specific amounts
+        // This would integrate with Chip's invoice API
+        throw new \Exception('Invoice creation not yet implemented');
+    }
+
+    /**
+     * Get the upcoming invoice for the billable entity.
+     */
+    public function upcomingInvoice(): ?Invoice
+    {
+        // Implementation for retrieving upcoming invoices
+        // This would integrate with Chip's invoice API
+        return null;
+    }
+
+    /**
+     * Find an invoice by its ID.
+     */
+    public function findInvoice(string $id): ?Invoice
+    {
+        // Implementation for finding invoices by ID
+        // This would integrate with Chip's invoice API
+        return null;
+    }
+
+    /**
+     * Find an invoice or throw a 404 error.
+     */
+    public function findInvoiceOrFail(string $id): Invoice
+    {
+        $invoice = $this->findInvoice($id);
+
+        if (! $invoice) {
+            throw new \Exception("Invoice {$id} not found");
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * Create a new checkout session for the billable entity.
+     */
+    public function redirectToCheckout(array $options = []): string
+    {
+        $checkout = $this->checkout($options['prices'] ?? [], $options);
+        
+        return $checkout->create()['checkout_url'] ?? '';
+    }
+
+    /**
+     * Get the tax rates that apply to the billable entity.
+     */
+    public function taxRates(): array
+    {
+        return config('cashier.tax_rates', []);
+    }
+
+    /**
+     * Sync the customer's information with Chip.
+     */
+    public function syncChipCustomerData(): Customer
+    {
+        return $this->asChipCustomer()->syncWithChip();
     }
 } 

@@ -43,9 +43,9 @@ abstract class TestCase extends Orchestra
 
         // Set up Chip configuration for testing
         config()->set('cashier-chip.brand_id', 'test_brand_id');
-        config()->set('cashier-chip.api_key', 'test_api_key');
-        config()->set('cashier-chip.endpoint', 'https://api.test.chip-in.asia/api/v1');
-        config()->set('cashier-chip.webhook_secret', 'test_webhook_secret');
+        config()->set('cashier-chip.chip_api_key', 'test_api_key');
+        config()->set('cashier-chip.chip_api_url', 'https://api.test.chip-in.asia/api/v1');
+        config()->set('cashier-chip.chip_webhook_secret', 'test_webhook_secret');
     }
 
     protected function setUpDatabase(): void
@@ -69,12 +69,13 @@ abstract class TestCase extends Orchestra
         Schema::create('subscriptions', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('user_id');
-            $table->string('type');
+            $table->string('name');
             $table->string('chip_id')->unique();
             $table->string('chip_status');
-            $table->string('chip_price')->nullable();
+            $table->string('chip_price_id')->nullable();
             $table->integer('quantity')->nullable();
             $table->timestamp('trial_ends_at')->nullable();
+            $table->timestamp('paused_at')->nullable();
             $table->timestamp('ends_at')->nullable();
             $table->timestamps();
 
@@ -108,6 +109,22 @@ abstract class TestCase extends Orchestra
             $table->timestamps();
 
             $table->index(['billable_id', 'billable_type']);
+        });
+
+        // Create payments table
+        Schema::create('payments', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('chip_id')->nullable()->index();
+            $table->morphs('billable');
+            $table->integer('amount');
+            $table->string('currency', 3)->default('MYR');
+            $table->string('status')->default('pending');
+            $table->string('refunded_from')->nullable();
+            $table->boolean('charged_with_token')->default(false);
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+            
+            $table->index('status');
         });
     }
 

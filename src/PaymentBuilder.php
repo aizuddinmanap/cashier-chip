@@ -82,42 +82,40 @@ class PaymentBuilder
     /**
      * Create the payment.
      */
-    public function create(): Payment
+    public function create(): Transaction
     {
-        // Ensure the billable model has a Chip customer ID
-        if (! $this->billable->hasChipId()) {
-            $this->billable->createAsChipCustomer();
+        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+
+        try {
+            // Prepare purchase data for Chip API
+            $purchaseData = [
+                'amount' => $this->amount,
+                'currency' => $this->currency,
+                'description' => $this->description,
+                'metadata' => $this->metadata,
+            ];
+
+            // Merge any additional options
+            $purchaseData = array_merge($purchaseData, $this->options);
+
+            // Create purchase via Chip API
+            $response = $api->createPurchase($purchaseData);
+
+            // Create local payment record
+            return $this->billable->transactions()->create([
+                'id' => 'txn_' . uniqid(),
+                'chip_id' => $response['id'],
+                'amount' => $this->amount,
+                'currency' => $this->currency,
+                'description' => $this->description,
+                'status' => $response['status'] ?? 'pending',
+                'type' => 'charge',
+                'metadata' => json_encode($this->metadata),
+            ]);
+
+        } catch (\Exception $e) {
+            throw new \Exception("Failed to create payment: {$e->getMessage()}");
         }
-
-        // Create checkout with Chip API
-        $checkout = Checkout::forPayment($this->amount, $this->currency)
-            ->customer($this->billable->chipId())
-            ->description($this->description ?? 'Payment');
-
-        if (isset($this->options['success_url'])) {
-            $checkout->successUrl($this->options['success_url']);
-        }
-        
-        if (isset($this->options['cancel_url'])) {
-            $checkout->cancelUrl($this->options['cancel_url']);
-        }
-
-        if (! empty($this->metadata)) {
-            $checkout->withMetadata($this->metadata);
-        }
-
-        $response = $checkout->create();
-
-        // Create the payment record
-        $payment = $this->billable->payments()->create([
-            'id' => $response['id'] ?? 'pay_' . uniqid(),
-            'chip_id' => $response['id'] ?? 'chip_' . uniqid(),
-            'amount' => $this->amount,
-            'currency' => $this->currency,
-            'status' => 'pending',
-        ]);
-
-        return $payment;
     }
 
     /**

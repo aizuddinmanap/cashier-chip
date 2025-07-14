@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Concerns;
 
-use Aizuddinmanap\CashierChip\Payment;
+use Aizuddinmanap\CashierChip\Transaction;
 use Aizuddinmanap\CashierChip\PaymentBuilder;
 
 trait PerformsCharges
@@ -12,7 +12,7 @@ trait PerformsCharges
     /**
      * Make a one-time charge on the customer for the given amount.
      */
-    public function charge(int $amount, array $options = []): Payment
+    public function charge(int $amount, array $options = []): Transaction
     {
         return $this->newCharge($amount, $options)->create();
     }
@@ -28,15 +28,15 @@ trait PerformsCharges
     /**
      * Refund a customer for a charge.
      */
-    public function refund(string $paymentId, ?int $amount = null): Payment
+    public function refund(string $transactionId, ?int $amount = null): Transaction
     {
         $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
         
-        // Find the original payment
-        $payment = $this->findPayment($paymentId);
+        // Find the original transaction
+        $transaction = $this->findTransaction($transactionId);
         
-        if (! $payment) {
-            throw new \Exception("Payment {$paymentId} not found.");
+        if (! $transaction) {
+            throw new \Exception("Transaction {$transactionId} not found.");
         }
 
         try {
@@ -46,16 +46,17 @@ trait PerformsCharges
                 $refundData['amount'] = $amount;
             }
             
-            $response = $api->refundPurchase($payment->chip_id, $refundData);
+            $response = $api->refundPurchase($transaction->chip_id, $refundData);
             
-            // Create refund payment record based on API response
-            return $this->payments()->create([
-                'id' => 'pay_' . uniqid(),
+            // Create refund transaction record based on API response
+            return $this->transactions()->create([
+                'id' => 'txn_' . uniqid(),
                 'chip_id' => $response['id'] ?? 'refund_' . uniqid(),
-                'amount' => $amount ?? $payment->rawAmount(),
-                'currency' => $payment->currency(),
+                'amount' => $amount ?? $transaction->rawAmount(),
+                'currency' => $transaction->currency(),
                 'status' => 'refunded',
-                'refunded_from' => $payment->id,
+                'type' => 'refund',
+                'refunded_from' => $transaction->id,
             ]);
             
         } catch (\Exception $e) {
@@ -66,20 +67,21 @@ trait PerformsCharges
     /**
      * Charge a customer using a saved token.
      */
-    public function chargeWithToken(string $purchaseId, array $options = []): Payment
+    public function chargeWithToken(string $purchaseId, array $options = []): Transaction
     {
         $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
         
         try {
             $response = $api->chargePurchase($purchaseId, $options);
             
-            // Create payment record based on API response
-            return $this->payments()->create([
-                'id' => 'pay_' . uniqid(),
+            // Create transaction record based on API response
+            return $this->transactions()->create([
+                'id' => 'txn_' . uniqid(),
                 'chip_id' => $response['id'] ?? $purchaseId,
                 'amount' => $response['amount'] ?? ($options['amount'] ?? 0),
                 'currency' => $response['currency'] ?? ($options['currency'] ?? 'MYR'),
                 'status' => $response['status'] ?? 'processing',
+                'type' => 'charge',
                 'charged_with_token' => true,
             ]);
             
@@ -89,18 +91,36 @@ trait PerformsCharges
     }
 
     /**
-     * Find a payment by its ID.
+     * Find a transaction by its ID.
      */
-    public function findPayment(string $paymentId): ?Payment
+    public function findTransaction(string $transactionId): ?Transaction
     {
-        return $this->payments()->where('id', $paymentId)->first();
+        return $this->transactions()->where('id', $transactionId)->first();
     }
 
     /**
-     * Get all payments for the billable entity.
+     * Get all transactions for the billable entity.
+     */
+    public function transactions()
+    {
+        return $this->morphMany(Transaction::class, 'billable')->orderByDesc('created_at');
+    }
+
+    /**
+     * Legacy method - Find a payment by its ID.
+     * @deprecated Use findTransaction instead
+     */
+    public function findPayment(string $paymentId): ?Transaction
+    {
+        return $this->findTransaction($paymentId);
+    }
+
+    /**
+     * Legacy method - Get all payments for the billable entity.
+     * @deprecated Use transactions instead
      */
     public function payments()
     {
-        return $this->morphMany(Payment::class, 'billable')->orderByDesc('created_at');
+        return $this->transactions();
     }
 } 

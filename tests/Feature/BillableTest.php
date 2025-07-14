@@ -138,7 +138,7 @@ class BillableTest extends TestCase
         $payment = $this->user->charge(10000);
 
         $this->assertEquals(10000, $payment->amount);
-        $this->assertEquals('MYR', $payment->currency);
+        $this->assertEquals('myr', $payment->currency);
     }
 
     /** @test */

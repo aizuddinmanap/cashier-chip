@@ -10,19 +10,19 @@ use Illuminate\Database\Eloquent\Model;
 class SubscriptionBuilder
 {
     /**
-     * The model that is subscribing.
+     * The billable entity.
      */
     protected Model $billable;
 
     /**
-     * The name of the subscription.
+     * The subscription name.
      */
     protected string $name;
 
     /**
-     * The plan to subscribe to.
+     * The price ID.
      */
-    protected string $plan;
+    protected string $priceId;
 
     /**
      * The quantity of the subscription.
@@ -30,33 +30,33 @@ class SubscriptionBuilder
     protected int $quantity = 1;
 
     /**
-     * The trial end date for the subscription.
+     * The trial end date.
      */
-    protected ?\DateTimeInterface $trialEnd = null;
+    protected ?\DateTimeInterface $trialEnds = null;
 
     /**
-     * Indicates that the trial should end immediately.
+     * Indicates if the trial should end immediately.
      */
     protected bool $skipTrial = false;
 
     /**
-     * The coupon code being applied to the customer.
-     */
-    protected ?string $coupon = null;
-
-    /**
-     * Metadata to apply to the subscription.
+     * The metadata to apply to the subscription.
      */
     protected array $metadata = [];
 
     /**
+     * The subscription options.
+     */
+    protected array $options = [];
+
+    /**
      * Create a new subscription builder instance.
      */
-    public function __construct(Model $billable, string $name, string $plan)
+    public function __construct(Model $billable, string $name, string $priceId)
     {
         $this->billable = $billable;
         $this->name = $name;
-        $this->plan = $plan;
+        $this->priceId = $priceId;
     }
 
     /**
@@ -70,41 +70,32 @@ class SubscriptionBuilder
     }
 
     /**
-     * Specify the number of days of the trial.
+     * Specify the trial period in days.
      */
-    public function trialDays(int $trialDays): self
+    public function trialDays(int $days): self
     {
-        $this->trialEnd = Carbon::now()->addDays($trialDays);
+        $this->trialEnds = Carbon::now()->addDays($days);
 
         return $this;
     }
 
     /**
-     * Specify the ending date of the trial.
+     * Specify the trial period until a specific date.
      */
-    public function trialUntil(\DateTimeInterface $trialEnd): self
+    public function trialUntil(\DateTimeInterface $trialEnds): self
     {
-        $this->trialEnd = $trialEnd;
+        $this->trialEnds = $trialEnds;
 
         return $this;
     }
 
     /**
-     * Force the trial to end immediately.
+     * Skip the trial period.
      */
     public function skipTrial(): self
     {
         $this->skipTrial = true;
-
-        return $this;
-    }
-
-    /**
-     * The coupon to apply to a new subscription.
-     */
-    public function withCoupon(string $coupon): self
-    {
-        $this->coupon = $coupon;
+        $this->trialEnds = null;
 
         return $this;
     }
@@ -114,7 +105,17 @@ class SubscriptionBuilder
      */
     public function withMetadata(array $metadata): self
     {
-        $this->metadata = $metadata;
+        $this->metadata = array_merge($this->metadata, $metadata);
+
+        return $this;
+    }
+
+    /**
+     * Set subscription options.
+     */
+    public function withOptions(array $options): self
+    {
+        $this->options = array_merge($this->options, $options);
 
         return $this;
     }
@@ -124,51 +125,121 @@ class SubscriptionBuilder
      */
     public function create(array $options = []): Subscription
     {
-        // Ensure the billable model has a Chip customer ID
+        // Ensure the billable model has a Chip customer
         if (! $this->billable->hasChipId()) {
-            $this->billable->createAsChipCustomer($options);
+            $this->billable->createAsChipCustomer();
         }
 
-        // Calculate trial end date
-        $trialEnd = $this->skipTrial ? null : $this->trialEnd;
+        // Merge builder options with method options
+        $options = array_merge($this->options, $options);
 
-        // Create the subscription record
-        $subscription = $this->billable->subscriptions()->create([
-            'name' => $this->name,
-            'chip_id' => 'sub_' . uniqid(), // Will be replaced with actual Chip ID from API
-            'chip_status' => 'active',
-            'chip_price_id' => $this->plan,
-            'quantity' => $this->quantity,
-            'trial_ends_at' => $trialEnd,
-        ]);
+        try {
+            // Create subscription via Chip API
+            $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+            
+            $subscriptionData = [
+                'customer_id' => $this->billable->chipId(),
+                'price_id' => $this->priceId,
+                'quantity' => $this->quantity,
+                'metadata' => $this->metadata,
+            ];
 
-        // Create subscription items
-        $subscription->items()->create([
-            'chip_id' => 'si_' . uniqid(), // Will be replaced with actual Chip ID from API
-            'chip_product_id' => $this->plan, // Assuming plan is product for now
-            'chip_price_id' => $this->plan,
-            'quantity' => $this->quantity,
-        ]);
+            if ($this->trialEnds && ! $this->skipTrial) {
+                $subscriptionData['trial_end'] = $this->trialEnds->getTimestamp();
+            }
 
-        // TODO: Make actual API call to Chip to create the subscription
-        // This would involve calling the Chip API with the subscription details
+            $subscriptionData = array_merge($subscriptionData, $options);
 
-        return $subscription;
+            $response = $api->createSubscription($subscriptionData);
+
+            // Create local subscription record
+            $subscription = $this->billable->subscriptions()->create([
+                'name' => $this->name,
+                'chip_id' => $response['id'],
+                'chip_status' => $response['status'] ?? 'active',
+                'chip_price_id' => $this->priceId,
+                'quantity' => $this->quantity,
+                'trial_ends_at' => $this->trialEnds,
+                'ends_at' => null,
+            ]);
+
+            return $subscription;
+
+        } catch (\Exception $e) {
+            throw new \Exception("Failed to create subscription: {$e->getMessage()}");
+        }
     }
 
     /**
-     * Create the subscription and return the checkout URL.
+     * Add the subscription to the billable entity without creating it in Chip.
      */
-    public function checkout(array $options = []): array
+    public function add(array $options = []): Subscription
     {
-        $subscription = $this->create($options);
+        // This method is for adding existing Chip subscriptions to the local database
+        return $this->billable->subscriptions()->create([
+            'name' => $this->name,
+            'chip_id' => $options['chip_id'] ?? 'sub_' . uniqid(),
+            'chip_status' => $options['status'] ?? 'active',
+            'chip_price_id' => $this->priceId,
+            'quantity' => $this->quantity,
+            'trial_ends_at' => $this->trialEnds,
+            'ends_at' => null,
+        ]);
+    }
 
-        // TODO: Create checkout session with Chip API
-        // This would return the checkout URL from Chip
+    /**
+     * Get the billable entity.
+     */
+    public function getBillable(): Model
+    {
+        return $this->billable;
+    }
 
-        return [
-            'subscription' => $subscription,
-            'checkout_url' => 'https://gate.chip-in.asia/payment/checkout_url_placeholder',
-        ];
+    /**
+     * Get the subscription name.
+     */
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Get the price ID.
+     */
+    public function getPriceId(): string
+    {
+        return $this->priceId;
+    }
+
+    /**
+     * Get the quantity.
+     */
+    public function getQuantity(): int
+    {
+        return $this->quantity;
+    }
+
+    /**
+     * Get the trial end date.
+     */
+    public function getTrialEnds(): ?\DateTimeInterface
+    {
+        return $this->trialEnds;
+    }
+
+    /**
+     * Get the metadata.
+     */
+    public function getMetadata(): array
+    {
+        return $this->metadata;
+    }
+
+    /**
+     * Get the options.
+     */
+    public function getOptions(): array
+    {
+        return $this->options;
     }
 } 

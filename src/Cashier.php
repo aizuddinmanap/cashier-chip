@@ -29,9 +29,34 @@ class Cashier
     public static string $currency = 'myr';
 
     /**
+     * The currency locale.
+     */
+    public static string $currencyLocale = 'en';
+
+    /**
      * The custom currency formatter.
      */
     protected static $formatCurrencyUsing;
+
+    /**
+     * The customer model class name.
+     */
+    public static string $customerModel = 'Aizuddinmanap\\CashierChip\\Customer';
+
+    /**
+     * The subscription model class name.
+     */
+    public static string $subscriptionModel = 'Aizuddinmanap\\CashierChip\\Subscription';
+
+    /**
+     * The subscription item model class name.
+     */
+    public static string $subscriptionItemModel = 'Aizuddinmanap\\CashierChip\\SubscriptionItem';
+
+    /**
+     * The transaction model class name.
+     */
+    public static string $transactionModel = 'Aizuddinmanap\\CashierChip\\Transaction';
 
     /**
      * Get the default currency used by Cashier.
@@ -44,9 +69,21 @@ class Cashier
     /**
      * Set the currency to be used when billing customers.
      */
-    public static function useCurrency(string $currency): void
+    public static function useCurrency(string $currency, ?string $locale = null): void
     {
         static::$currency = strtolower($currency);
+
+        if ($locale) {
+            static::$currencyLocale = $locale;
+        }
+    }
+
+    /**
+     * Get the currency locale used by Cashier.
+     */
+    public static function usesCurrencyLocale(): string
+    {
+        return static::$currencyLocale;
     }
 
     /**
@@ -75,7 +112,7 @@ class Cashier
         }
 
         $money = new \Money\Money($amount, new Currency(strtoupper($currency ?: static::usesCurrency())));
-        $numberFormatter = new \NumberFormatter(config('app.locale', 'en'), \NumberFormatter::CURRENCY);
+        $numberFormatter = new \NumberFormatter(static::usesCurrencyLocale(), \NumberFormatter::CURRENCY);
 
         return $numberFormatter->formatCurrency($money->getAmount() / 100, $money->getCurrency()->getCode());
     }
@@ -101,11 +138,83 @@ class Cashier
     }
 
     /**
+     * Set the customer model class name.
+     */
+    public static function useCustomerModel(string $customerModel): void
+    {
+        static::$customerModel = $customerModel;
+    }
+
+    /**
+     * Get the customer model class name.
+     */
+    public static function customerModel(): string
+    {
+        return static::$customerModel;
+    }
+
+    /**
+     * Set the subscription model class name.
+     */
+    public static function useSubscriptionModel(string $subscriptionModel): void
+    {
+        static::$subscriptionModel = $subscriptionModel;
+    }
+
+    /**
+     * Get the subscription model class name.
+     */
+    public static function subscriptionModel(): string
+    {
+        return static::$subscriptionModel;
+    }
+
+    /**
+     * Set the subscription item model class name.
+     */
+    public static function useSubscriptionItemModel(string $subscriptionItemModel): void
+    {
+        static::$subscriptionItemModel = $subscriptionItemModel;
+    }
+
+    /**
+     * Get the subscription item model class name.
+     */
+    public static function subscriptionItemModel(): string
+    {
+        return static::$subscriptionItemModel;
+    }
+
+    /**
+     * Set the transaction model class name.
+     */
+    public static function useTransactionModel(string $transactionModel): void
+    {
+        static::$transactionModel = $transactionModel;
+    }
+
+    /**
+     * Get the transaction model class name.
+     */
+    public static function transactionModel(): string
+    {
+        return static::$transactionModel;
+    }
+
+    /**
      * Get the Chip API key.
      */
     public static function chipApiKey(): string
     {
-        return config('cashier-chip.chip_api_key');
+        return config('cashier.chip_api_key') ?: config('cashier-chip.chip_api_key', '');
+    }
+
+    /**
+     * Get the Chip brand ID.
+     */
+    public static function chipBrandId(): string
+    {
+        return config('cashier.chip_brand_id') ?: config('cashier-chip.chip_brand_id', '');
     }
 
     /**
@@ -113,7 +222,7 @@ class Cashier
      */
     public static function chipWebhookSecret(): ?string
     {
-        return config('cashier-chip.chip_webhook_secret');
+        return config('cashier.chip_webhook_secret') ?: config('cashier-chip.chip_webhook_secret');
     }
 
     /**
@@ -121,6 +230,54 @@ class Cashier
      */
     public static function chipApiUrl(): string
     {
-        return config('cashier-chip.chip_api_url', 'https://gate.chip-in.asia/api/v1');
+        return config('cashier.chip_api_url') ?: config('cashier-chip.chip_api_url', 'https://gate.chip-in.asia/api/v1');
+    }
+
+    /**
+     * Get the billable entity instance by Chip ID.
+     */
+    public static function findBillable(string $chipId)
+    {
+        return config('cashier.model', config('auth.providers.users.model', 'App\\Models\\User'))::where('chip_id', $chipId)->first();
+    }
+
+    /**
+     * Get the default Chip payment methods.
+     */
+    public static function chipPaymentMethods(): array
+    {
+        return config('cashier.payment_methods', ['fpx', 'card']);
+    }
+
+    /**
+     * Determine if the application is running in test mode.
+     */
+    public static function isTestMode(): bool
+    {
+        return config('cashier.test_mode', false) || str_contains(static::chipApiKey(), 'test_');
+    }
+
+    /**
+     * Get the webhook tolerance in seconds.
+     */
+    public static function webhookTolerance(): int
+    {
+        return config('cashier.webhook_tolerance', 300);
+    }
+
+    /**
+     * Get the default billable model.
+     */
+    public static function billableModel(): string
+    {
+        return config('cashier.model', config('auth.providers.users.model', 'App\\Models\\User'));
+    }
+
+    /**
+     * Configure the billable model.
+     */
+    public static function useBillableModel(string $model): void
+    {
+        config(['cashier.model' => $model]);
     }
 } 
