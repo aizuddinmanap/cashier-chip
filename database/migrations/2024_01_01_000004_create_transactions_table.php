@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('type')->default('charge'); // charge, refund, etc.
             $table->string('status'); // pending, success, failed, refunded
             $table->string('currency', 3)->default('MYR');
-            $table->integer('amount'); // Amount in cents
+            $table->integer('total'); // Amount in cents
             $table->string('payment_method')->nullable(); // fpx, card, ewallet, etc.
             $table->string('description')->nullable();
             $table->json('metadata')->nullable();

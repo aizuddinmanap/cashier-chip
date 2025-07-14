@@ -35,7 +35,7 @@ class Transaction extends Model
      * The attributes that should be cast to native types.
      */
     protected $casts = [
-        'amount' => 'integer',
+        'total' => 'integer',
         'processed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -62,7 +62,7 @@ class Transaction extends Model
      */
     public function amount(): string
     {
-        return Cashier::formatAmount($this->amount, $this->currency);
+        return Cashier::formatAmount($this->total, $this->currency);
     }
 
     /**
@@ -70,7 +70,7 @@ class Transaction extends Model
      */
     public function rawAmount(): int
     {
-        return $this->amount;
+        return $this->total;
     }
 
     /**
@@ -86,7 +86,7 @@ class Transaction extends Model
      */
     public function asMoney(): Money
     {
-        return new Money($this->amount, new Currency(strtoupper($this->currency)));
+        return new Money($this->total, new Currency(strtoupper($this->currency)));
     }
 
     /**

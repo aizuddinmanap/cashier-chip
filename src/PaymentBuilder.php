@@ -87,16 +87,40 @@ class PaymentBuilder
         $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
 
         try {
-            // Prepare purchase data for Chip API
+            // Ensure we have client email (required by Chip API)
+            $clientEmail = $this->options['client_email'] ?? $this->billable->email ?? null;
+            if (!$clientEmail) {
+                throw new \Exception('Client email is required for Chip API purchase creation');
+            }
+
+            // Prepare purchase data for Chip API following official SDK structure
             $purchaseData = [
-                'amount' => $this->amount,
-                'currency' => $this->currency,
-                'description' => $this->description,
-                'metadata' => $this->metadata,
+                'purchase' => [
+                    'currency' => strtoupper($this->currency),
+                    'products' => [
+                        [
+                            'name' => $this->description ?: 'Payment',
+                            'price' => $this->amount,
+                            'quantity' => 1,
+                        ]
+                    ],
+                    'metadata' => $this->metadata,
+                ],
+                'client' => [
+                    'email' => $clientEmail,
+                ],
+                'brand_id' => config('cashier.chip.brand_id'),
             ];
 
+            // Add client name if available
+            if ($this->billable->name ?? $this->options['client_name'] ?? null) {
+                $purchaseData['client']['full_name'] = $this->billable->name ?? $this->options['client_name'];
+            }
+
             // Merge any additional options
-            $purchaseData = array_merge($purchaseData, $this->options);
+            $purchaseData = array_merge($purchaseData, array_filter($this->options, function($key) {
+                return !in_array($key, ['client_email', 'client_name']);
+            }, ARRAY_FILTER_USE_KEY));
 
             // Create purchase via Chip API
             $response = $api->createPurchase($purchaseData);
@@ -105,7 +129,7 @@ class PaymentBuilder
             return $this->billable->transactions()->create([
                 'id' => 'txn_' . uniqid(),
                 'chip_id' => $response['id'],
-                'amount' => $this->amount,
+                'total' => $this->amount,
                 'currency' => $this->currency,
                 'description' => $this->description,
                 'status' => $response['status'] ?? 'pending',

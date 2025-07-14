@@ -195,7 +195,7 @@ class ChipApi
             $purchaseData['brand_id'] = $this->brandId;
         }
 
-        return $this->post('purchases', $purchaseData);
+        return $this->post('purchases/', $purchaseData);
     }
 
     /**
@@ -203,7 +203,7 @@ class ChipApi
      */
     public function getPurchase(string $purchaseId): array
     {
-        return $this->get("purchases/{$purchaseId}");
+        return $this->get("purchases/{$purchaseId}/");
     }
 
     /**
@@ -277,7 +277,7 @@ class ChipApi
      */
     public function refundPurchase(string $purchaseId, array $data = []): array
     {
-        return $this->post("purchases/{$purchaseId}/refund", $data);
+        return $this->post("purchases/{$purchaseId}/refund/", $data);
     }
 
     /**
@@ -285,7 +285,7 @@ class ChipApi
      */
     public function chargePurchase(string $purchaseId, array $data = []): array
     {
-        return $this->post("purchases/{$purchaseId}/charge", $data);
+        return $this->post("purchases/{$purchaseId}/charge/", $data);
     }
 
     /**
@@ -293,7 +293,7 @@ class ChipApi
      */
     public function deleteRecurringToken(string $purchaseId): array
     {
-        return $this->delete("purchases/{$purchaseId}/delete_recurring_token");
+        return $this->delete("purchases/{$purchaseId}/delete_recurring_token/");
     }
 
     /**

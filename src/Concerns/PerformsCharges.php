@@ -52,7 +52,7 @@ trait PerformsCharges
             return $this->transactions()->create([
                 'id' => 'txn_' . uniqid(),
                 'chip_id' => $response['id'] ?? 'refund_' . uniqid(),
-                'amount' => $amount ?? $transaction->rawAmount(),
+                'total' => $amount ?? $transaction->rawAmount(),
                 'currency' => $transaction->currency(),
                 'status' => 'refunded',
                 'type' => 'refund',
@@ -78,7 +78,7 @@ trait PerformsCharges
             return $this->transactions()->create([
                 'id' => 'txn_' . uniqid(),
                 'chip_id' => $response['id'] ?? $purchaseId,
-                'amount' => $response['amount'] ?? ($options['amount'] ?? 0),
+                'total' => $response['amount'] ?? ($options['amount'] ?? 0),
                 'currency' => $response['currency'] ?? ($options['currency'] ?? 'MYR'),
                 'status' => $response['status'] ?? 'processing',
                 'type' => 'charge',

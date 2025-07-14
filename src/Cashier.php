@@ -206,7 +206,7 @@ class Cashier
      */
     public static function chipApiKey(): string
     {
-        return config('cashier.chip_api_key', '');
+        return config('cashier.chip.api_key', '');
     }
 
     /**
@@ -214,7 +214,7 @@ class Cashier
      */
     public static function chipBrandId(): string
     {
-        return config('cashier.chip_brand_id', '');
+        return config('cashier.chip.brand_id', '');
     }
 
     /**
@@ -222,7 +222,7 @@ class Cashier
      */
     public static function chipWebhookSecret(): ?string
     {
-        return config('cashier.chip_webhook_secret');
+        return config('cashier.webhook.secret');
     }
 
     /**
