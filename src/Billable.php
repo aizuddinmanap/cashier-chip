@@ -203,7 +203,7 @@ trait Billable
      */
     public function checkout(array $prices, array $options = []): Checkout
     {
-        return Checkout::forPrices($prices, $options)->customer($this->chipId());
+        return Checkout::forPrices($prices, $options)->client($this->email, $this->name ?? null);
     }
 
     /**

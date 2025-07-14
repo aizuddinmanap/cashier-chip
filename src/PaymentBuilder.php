@@ -154,7 +154,7 @@ class PaymentBuilder
 
         // Create checkout with Chip API
         $checkout = Checkout::forPayment($this->amount, $this->currency)
-            ->customer($this->billable->chipId())
+            ->client($this->billable->email, $this->billable->name ?? null)
             ->description($this->description ?? 'Payment');
 
         if (isset($options['success_url'])) {
