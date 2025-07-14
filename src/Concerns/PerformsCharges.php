@@ -82,7 +82,7 @@ trait PerformsCharges
                 'currency' => $response['currency'] ?? ($options['currency'] ?? 'MYR'),
                 'status' => $response['status'] ?? 'processing',
                 'type' => 'charge',
-                'charged_with_token' => true,
+                'metadata' => json_encode(['charged_with_token' => true]),
             ]);
             
         } catch (\Exception $e) {

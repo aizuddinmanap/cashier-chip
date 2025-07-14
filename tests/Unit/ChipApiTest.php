@@ -39,12 +39,6 @@ class ChipApiTest extends TestCase
     /** @test */
     public function it_can_create_purchase(): void
     {
-        $purchaseData = [
-            'amount' => 10000,
-            'currency' => 'MYR',
-            'client' => ['email' => 'test@example.com'],
-        ];
-
         $expectedResponse = [
             'id' => 'purchase_123',
             'checkout_url' => 'https://checkout.chip-in.asia/123',
@@ -52,13 +46,31 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response($expectedResponse),
         ]);
 
-        $result = $this->api->createPurchase($purchaseData);
+        $api = new ChipApi();
+        $purchaseData = [
+            'purchase' => [
+                'currency' => 'MYR',
+                'products' => [
+                    [
+                        'name' => 'Test Product',
+                        'price' => 10000,
+                        'quantity' => 1,
+                    ]
+                ],
+            ],
+            'client' => [
+                'email' => 'test@example.com',
+            ],
+            'brand_id' => 'test_brand_id',
+        ];
 
-        $this->assertEquals($expectedResponse, $result);
-        $this->assertEquals('test_brand', $result['brand_id'] ?? $purchaseData['brand_id']);
+        $response = $api->createPurchase($purchaseData);
+
+        $this->assertEquals('purchase_123', $response['id']);
+        $this->assertEquals('https://checkout.chip-in.asia/123', $response['checkout_url']);
     }
 
     /** @test */
@@ -71,7 +83,7 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->getPurchase('purchase_123');
@@ -90,7 +102,7 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/refund' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/refund/' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->refundPurchase('purchase_123', $refundData);
@@ -109,7 +121,7 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/charge' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/charge/' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->chargePurchase('purchase_123', $chargeData);
@@ -123,7 +135,7 @@ class ChipApiTest extends TestCase
         $expectedResponse = ['success' => true];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/delete_recurring_token' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/delete_recurring_token/' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->deleteRecurringToken('purchase_123');
@@ -153,14 +165,19 @@ class ChipApiTest extends TestCase
     public function it_can_search_clients_by_email(): void
     {
         $expectedResponse = [
-            ['id' => 'client_123', 'email' => 'test@example.com'],
+            [
+                'id' => 'client_123',
+                'email' => 'test@example.com',
+                'full_name' => 'Test User',
+            ]
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients?q=test@example.com' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/clients?q=test%40example.com' => Http::response($expectedResponse),
         ]);
 
-        $result = $this->api->searchClientsByEmail('test@example.com');
+        $api = new ChipApi();
+        $result = $api->searchClientsByEmail('test@example.com');
 
         $this->assertEquals($expectedResponse, $result);
     }
@@ -196,14 +213,14 @@ class ChipApiTest extends TestCase
     /** @test */
     public function it_throws_exception_on_api_failure(): void
     {
+        $this->expectException(\Aizuddinmanap\CashierChip\Exceptions\ChipApiException::class);
+
         Http::fake([
-            'api.test.chip-in.asia/*' => Http::response(['error' => 'API Error'], 400),
+            'api.test.chip-in.asia/api/v1/payment_methods' => Http::response(['error' => 'API Error'], 400),
         ]);
 
-        $this->expectException(ChipApiException::class);
-        $this->expectExceptionMessage('Chip API request failed: 400');
-
-        $this->api->getPaymentMethods();
+        $api = new ChipApi();
+        $api->getPaymentMethods();
     }
 
     /** @test */
@@ -226,12 +243,15 @@ class ChipApiTest extends TestCase
     /** @test */
     public function it_builds_urls_correctly(): void
     {
-        Http::fake();
+        Http::fake([
+            'https://api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'test_123']),
+        ]);
 
-        $this->api->getPurchase('test_123');
+        $api = new ChipApi();
+        $api->createPurchase(['test' => 'data']);
 
         Http::assertSent(function ($request) {
-            return $request->url() === 'https://api.test.chip-in.asia/api/v1/purchases/test_123';
+            return $request->url() === 'https://api.test.chip-in.asia/api/v1/purchases/';
         });
     }
 

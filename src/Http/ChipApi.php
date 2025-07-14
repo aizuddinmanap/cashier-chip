@@ -99,7 +99,14 @@ class ChipApi
 
             return $response->json() ?? [];
 
-        } catch (RequestException $e) {
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            $this->logError($method, $endpoint, $e);
+            
+            throw new ChipApiException(
+                "Chip API request failed: {$e->response->status()} - {$e->response->body()}",
+                $e->response->status()
+            );
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
             $this->logError($method, $endpoint, $e);
             
             throw new ChipApiException(
@@ -302,6 +309,14 @@ class ChipApi
     public function searchClientsByEmail(string $email): array
     {
         return $this->get('clients', ['q' => $email]);
+    }
+
+    /**
+     * Create a subscription via Chip API.
+     */
+    public function createSubscription(array $data): array
+    {
+        return $this->post('subscriptions', $data);
     }
 
     /**

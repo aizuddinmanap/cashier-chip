@@ -97,31 +97,19 @@ abstract class TestCase extends Orchestra
 
         // Create transactions table
         Schema::create('transactions', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->unsignedBigInteger('billable_id');
-            $table->string('billable_type');
-            $table->string('chip_id')->unique();
-            $table->string('chip_status');
-            $table->string('currency');
-            $table->integer('amount');
-            $table->json('tax')->nullable();
-            $table->json('metadata')->nullable();
-            $table->timestamps();
-
-            $table->index(['billable_id', 'billable_type']);
-        });
-
-        // Create payments table
-        Schema::create('payments', function (Blueprint $table) {
             $table->string('id')->primary();
-            $table->string('chip_id')->nullable()->index();
+            $table->string('chip_id')->unique()->nullable();
+            $table->string('customer_id')->nullable();
             $table->morphs('billable');
-            $table->integer('amount');
+            $table->string('type')->default('charge');
+            $table->string('status');
             $table->string('currency', 3)->default('MYR');
-            $table->string('status')->default('pending');
-            $table->string('refunded_from')->nullable();
-            $table->boolean('charged_with_token')->default(false);
+            $table->integer('total');
+            $table->string('payment_method')->nullable();
+            $table->string('description')->nullable();
             $table->json('metadata')->nullable();
+            $table->string('refunded_from')->nullable();
+            $table->timestamp('processed_at')->nullable();
             $table->timestamps();
             
             $table->index('status');

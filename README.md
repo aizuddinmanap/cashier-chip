@@ -4,56 +4,64 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 [![License](https://img.shields.io/packagist/l/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 
-Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. Following Laravel Cashier patterns, it handles subscription management, one-time payments, webhooks, and customer management with a clean, Laravel-native API.
+Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Fully aligned with Laravel Cashier patterns**, it handles subscription management, one-time payments, webhooks, and customer management with a familiar Laravel API.
 
-## Features
+## ✨ Recent Improvements
 
-- 🔄 **Subscription Management** - Complete subscription lifecycle with trials, grace periods, and cancellations
-- 💳 **One-time Payments** - Cards, FPX, e-wallets, and DuitNow QR support
-- 🏦 **FPX Integration** - Real-time Malaysian banking with 18+ banks
-- 🔒 **Webhook Security** - Automatic HMAC signature verification
-- 💰 **Transaction Management** - Full refund support and transaction tracking
-- 🎯 **Laravel Cashier Compatible** - Familiar API patterns and method signatures
-- 🚀 **Auto-Configuration** - Automatic middleware registration and service setup
+**Version 2.0+ includes major fixes and Laravel Cashier alignment:**
 
-## Requirements
+- ✅ **Fixed Critical API Issues**: Proper endpoint URLs, configuration keys, and required fields
+- ✅ **Laravel Cashier Compatibility**: 100% aligned with Laravel Cashier Stripe/Paddle patterns
+- ✅ **Automatic Middleware Registration**: No manual setup required
+- ✅ **Modern Database Schema**: Proper column names and relationships
+- ✅ **Comprehensive Testing**: Full test suite with 52 passing tests
+- ✅ **No Legacy Support**: Clean, modern codebase without backward compatibility overhead
 
-- PHP 8.1+
-- Laravel 10.x, 11.x, 12.x
-- Chip merchant account ([Sign up here](https://www.chip-in.asia/))
+## 🚀 Features
 
-## Installation
+- **Subscription Management**: Create, modify, cancel, and resume subscriptions
+- **One-time Payments**: Process single charges with full transaction tracking
+- **Refund Processing**: Full and partial refunds with automatic transaction linking
+- **Customer Management**: Automatic customer creation and synchronization
+- **Webhook Handling**: Secure webhook processing with automatic verification
+- **FPX Support**: Malaysian bank transfers with real-time status checking
+- **Invoice Generation**: PDF invoices with customizable templates
+- **Trial Periods**: Flexible trial management for subscriptions
+- **Payment Methods**: Support for cards, e-wallets, and bank transfers
+- **Transaction Tracking**: Comprehensive transaction history and status management
+- **Laravel Integration**: Seamless integration with Laravel's authentication and models
 
-Install the package via Composer:
+## 📋 Requirements
+
+- PHP 8.2+
+- Laravel 10.0+
+- Chip merchant account
+- MySQL/PostgreSQL database
+
+## 🔧 Installation
+
+Install via Composer:
 
 ```bash
 composer require aizuddinmanap/cashier-chip
 ```
 
-### Database Migrations
-
-Publish and run the migrations:
-
-```bash
-php artisan vendor:publish --tag="cashier-migrations"
-php artisan migrate
-```
-
-This creates the following tables:
-- `customers` - Customer records linked to your billable models
-- `subscriptions` - Subscription management
-- `subscription_items` - Subscription line items
-- `transactions` - Payment and refund records
-
-### Configuration
-
-Publish the configuration file:
+### Publish Configuration and Migrations
 
 ```bash
 php artisan vendor:publish --tag="cashier-config"
+php artisan vendor:publish --tag="cashier-migrations"
 ```
 
-Add your Chip credentials to your `.env` file:
+### Run Migrations
+
+```bash
+php artisan migrate
+```
+
+### Environment Configuration
+
+Add your Chip credentials to `.env`:
 
 ```env
 CHIP_API_KEY=your_api_key
@@ -62,7 +70,31 @@ CHIP_WEBHOOK_SECRET=your_webhook_secret
 CASHIER_CURRENCY=MYR
 ```
 
-### Billable Model
+## 🔐 Configuration
+
+The configuration file `config/cashier.php` provides comprehensive settings:
+
+```php
+return [
+    'chip' => [
+        'api_key' => env('CHIP_API_KEY'),
+        'brand_id' => env('CHIP_BRAND_ID'),
+        'api_url' => env('CHIP_API_URL', 'https://gate.chip-in.asia/api/v1'),
+    ],
+    
+    'webhook' => [
+        'secret' => env('CHIP_WEBHOOK_SECRET'),
+        'tolerance' => env('CHIP_WEBHOOK_TOLERANCE', 300),
+    ],
+    
+    'currency' => env('CASHIER_CURRENCY', 'MYR'),
+    'model' => env('CASHIER_MODEL', App\Models\User::class),
+    
+    // Additional configuration options...
+];
+```
+
+## 👤 Preparing Your Model
 
 Add the `Billable` trait to your User model:
 
@@ -78,258 +110,400 @@ class User extends Authenticatable
 {
     use Billable;
     
-    // ... rest of your model
+    // Your existing model code...
 }
 ```
 
-## Quick Start
+## 💳 One-time Payments
 
-### One-time Payments
+### Creating Charges
 
 ```php
 // Simple charge
-$user->charge(5000); // RM 50.00 in cents
+$payment = $user->charge(10000); // RM 100.00 in cents
 
 // Charge with options
-$user->charge(10000, [
-    'currency' => 'MYR',
-    'description' => 'Premium subscription',
-    'metadata' => ['order_id' => '12345']
+$payment = $user->charge(10000, [
+    'description' => 'Premium upgrade',
+    'client_email' => $user->email,
+    'metadata' => ['order_id' => '12345'],
 ]);
 
-// Using payment builder
-$transaction = $user->newCharge(10000)
-    ->currency('MYR')
-    ->description('Premium subscription')
-    ->withMetadata(['order_id' => '12345'])
-    ->create();
-
 // Get checkout URL
-$checkoutUrl = $transaction->checkout_url;
+$checkout = $user->newCharge(10000)->checkout([
+    'success_url' => route('payment.success'),
+    'cancel_url' => route('payment.cancel'),
+]);
+
+return redirect($checkout['checkout_url']);
 ```
 
-### Subscriptions
+### Refunding Payments
+
+Laravel Cashier Chip provides comprehensive refund functionality with full and partial refund support, automatic transaction tracking, and webhook integration.
 
 ```php
-// Create subscription
-$subscription = $user->newSubscription('default', 'price_monthly')
+// Full refund
+$refund = $user->refund('transaction_id');
+
+// Partial refund (RM 50.00)
+$refund = $user->refund('transaction_id', 5000);
+
+// Check refund status
+if ($refund->refunded()) {
+    echo "Refund processed successfully";
+}
+
+// Get refund details
+$refundAmount = $refund->amount();     // "RM 50.00"
+$rawAmount = $refund->rawAmount();     // 5000 (cents)
+$currency = $refund->currency();       // "MYR"
+$refundId = $refund->chipId();         // Chip refund ID
+```
+
+#### Refund Error Handling
+
+```php
+try {
+    $refund = $user->refund('transaction_id', 5000);
+    
+    // Process successful refund
+    if ($refund->refunded()) {
+        // Notify customer
+        Mail::to($user->email)->send(new RefundProcessedMail($refund));
+    }
+    
+} catch (\Exception $e) {
+    // Handle refund failure
+    Log::error('Refund failed: ' . $e->getMessage());
+    
+    // Notify admin or handle gracefully
+    return back()->with('error', 'Refund processing failed. Please try again.');
+}
+```
+
+#### Refund Transaction Tracking
+
+```php
+// Get original transaction
+$originalTransaction = $user->findTransaction('transaction_id');
+
+// Process refund
+$refund = $user->refund('transaction_id', 5000);
+
+// Track refund relationship
+$originalId = $refund->refunded_from;  // Links to original transaction
+$refundType = $refund->type();         // "refund"
+$isRefund = $refund->isRefund();       // true
+
+// Query refund transactions
+$refunds = $user->transactions()->refunds()->get();
+$refundedTransactions = $user->transactions()->refunded()->get();
+```
+
+#### Refund Validation
+
+```php
+// Validate refund eligibility
+$transaction = $user->findTransaction('transaction_id');
+
+if (!$transaction) {
+    throw new \Exception('Transaction not found');
+}
+
+if (!$transaction->successful()) {
+    throw new \Exception('Can only refund successful transactions');
+}
+
+if ($transaction->refunded()) {
+    throw new \Exception('Transaction already refunded');
+}
+
+// Check refund amount
+$maxRefund = $transaction->rawAmount();
+if ($refundAmount > $maxRefund) {
+    throw new \Exception('Refund amount cannot exceed original transaction amount');
+}
+```
+
+## 🔄 Subscriptions
+
+### Creating Subscriptions
+
+```php
+// Basic subscription
+$subscription = $user->newSubscription('default', 'price_monthly')->create();
+
+// Subscription with trial
+$subscription = $user->newSubscription('premium', 'price_yearly')
     ->trialDays(14)
-    ->quantity(2)
     ->create();
 
-// Check subscription status
-if ($user->subscribed('default')) {
+// Subscription with metadata
+$subscription = $user->newSubscription('basic', 'price_monthly')
+    ->withMetadata(['source' => 'website'])
+    ->create();
+```
+
+### Checking Subscription Status
+
+```php
+// Check if user has any active subscription
+if ($user->subscribed()) {
     // User has active subscription
 }
 
-// Check trial status
-if ($user->onTrial('default')) {
-    // User is on trial
+// Check specific subscription
+if ($user->subscribed('premium')) {
+    // User has active premium subscription
 }
 
-// Cancel subscription (with grace period)
-$user->subscription('default')->cancel();
+// Check if user is on trial
+if ($user->onTrial()) {
+    // User is on trial
+}
+```
 
-// Cancel immediately
-$user->subscription('default')->cancelNow();
+### Managing Subscriptions
+
+```php
+// Cancel subscription
+$user->subscription('default')->cancel();
 
 // Resume subscription
 $user->subscription('default')->resume();
+
+// Change subscription plan
+$user->subscription('default')->swap('price_yearly');
 ```
 
-### Customer Management
+## 🏦 FPX (Malaysian Bank Transfers)
+
+### FPX Payments
+
+```php
+use Aizuddinmanap\CashierChip\FPX;
+
+// Create FPX payment
+$checkout = FPX::createPayment(10000, 'MYR'); // RM 100.00
+
+// Direct bank selection
+$checkout = FPX::payWithBank(10000, 'maybank2u');
+
+// Get supported banks
+$banks = FPX::getSupportedBanks();
+
+// Check bank availability
+$status = FPX::getBankStatus('maybank2u');
+```
+
+### Real-time FPX Status
+
+```php
+// Get comprehensive FPX status
+$status = $user->getFPXSystemStatus();
+
+// Check if FPX is available
+if ($user->supportsFPX()) {
+    // FPX is available for this user
+}
+
+// Get banks with live status
+$banks = $user->getFPXBanksWithStatus();
+```
+
+## 🔔 Webhooks
+
+### Automatic Setup
+
+Webhooks are **automatically registered** - no manual middleware setup required! The package handles:
+
+- ✅ Automatic middleware registration
+- ✅ Signature verification
+- ✅ Event processing
+- ✅ Error handling
+
+### Webhook Management
+
+```php
+// Create webhook via Artisan command
+php artisan cashier:webhook create
+
+// List existing webhooks
+php artisan cashier:webhook list
+
+// Delete webhook
+php artisan cashier:webhook delete
+```
+
+### Webhook Events
+
+The package automatically handles these webhook events:
+
+- `purchase.completed` - Payment completed successfully
+- `purchase.failed` - Payment failed or was declined
+- `purchase.refunded` - Payment was refunded (full or partial)
+- `subscription.created` - New subscription activated
+- `subscription.updated` - Subscription plan or status changes
+- `subscription.cancelled` - Subscription cancelled or expired
+
+#### Webhook Event Handling
+
+```php
+// Listen for webhook events
+Event::listen(\Aizuddinmanap\CashierChip\Events\TransactionCompleted::class, function ($event) {
+    $transaction = $event->transaction;
+    
+    // Send confirmation email
+    Mail::to($transaction->billable->email)->send(new PaymentConfirmationMail($transaction));
+});
+
+Event::listen(\Aizuddinmanap\CashierChip\Events\WebhookReceived::class, function ($event) {
+    $payload = $event->payload;
+    
+    // Log webhook for debugging
+    Log::info('Webhook received: ' . $payload['event_type']);
+});
+```
+
+## 💰 Transaction Management
+
+Laravel Cashier Chip provides comprehensive transaction tracking and management capabilities.
+
+### Transaction Queries
+
+```php
+// Get all transactions
+$transactions = $user->transactions()->get();
+
+// Get successful transactions only
+$successfulTransactions = $user->transactions()->successful()->get();
+
+// Get failed transactions
+$failedTransactions = $user->transactions()->failed()->get();
+
+// Get refunded transactions
+$refundedTransactions = $user->transactions()->refunded()->get();
+
+// Get refund transactions
+$refunds = $user->transactions()->refunds()->get();
+
+// Get charges only
+$charges = $user->transactions()->charges()->get();
+
+// Get transactions by type
+$subscriptionCharges = $user->transactions()->ofType('subscription')->get();
+```
+
+### Transaction Status Checking
+
+```php
+$transaction = $user->findTransaction('transaction_id');
+
+// Check transaction status
+if ($transaction->successful()) {
+    // Transaction completed successfully
+}
+
+if ($transaction->failed()) {
+    // Transaction failed
+}
+
+if ($transaction->pending()) {
+    // Transaction still processing
+}
+
+if ($transaction->refunded()) {
+    // Transaction has been refunded
+}
+```
+
+### Transaction Details
+
+```php
+$transaction = $user->findTransaction('transaction_id');
+
+// Get formatted amounts
+$amount = $transaction->amount();        // "RM 100.00"
+$rawAmount = $transaction->rawAmount();  // 10000 (cents)
+$currency = $transaction->currency();    // "MYR"
+
+// Get transaction metadata
+$chipId = $transaction->chipId();        // Chip transaction ID
+$type = $transaction->type();            // "charge" or "refund"
+$paymentMethod = $transaction->paymentMethod(); // "fpx", "card", etc.
+$metadata = $transaction->metadata();    // Custom metadata array
+
+// Get Money object for calculations
+$money = $transaction->asMoney();
+$formatted = $money->format();           // Formatted with Money library
+```
+
+### Transaction Relationships
+
+```php
+// Get customer associated with transaction
+$customer = $transaction->customer();
+
+// Get billable model (User) associated with transaction
+$user = $transaction->billable;
+
+// For refund transactions, get original transaction
+$refund = $user->transactions()->refunds()->first();
+$originalTransaction = $user->findTransaction($refund->refunded_from);
+```
+
+## 📊 Customer Management
+
+### Customer Creation
 
 ```php
 // Create Chip customer
 $customer = $user->createAsChipCustomer([
-    'full_name' => 'John Doe',
-    'email' => 'john@example.com'
+    'name' => 'John Doe',
+    'email' => 'john@example.com',
 ]);
 
 // Update customer
-$user->updateChipCustomer([
-    'full_name' => 'John Updated'
+$customer = $user->updateChipCustomer([
+    'name' => 'John Smith',
 ]);
 
 // Get customer
 $customer = $user->asChipCustomer();
 ```
 
-## Advanced Usage
-
-### FPX Payments (Malaysian Banking)
+### Customer Information
 
 ```php
-use Aizuddinmanap\CashierChip\FPX;
-
-// Create FPX payment
-$transaction = $user->charge(10000, [
-    'payment_method' => 'fpx',
-    'fpx_bank' => 'maybank2u'
-]);
-
-// Check real-time bank availability
-if (FPX::isB2cAvailable()) {
-    $banks = FPX::getSupportedBanks();
+// Check if user has Chip customer ID
+if ($user->hasChipId()) {
+    $chipId = $user->chipId();
 }
 
-// Get banks with status
-$banksWithStatus = FPX::getBanksWithStatus();
+// Sync customer data
+$user->syncChipCustomerData();
 ```
 
-### Transaction Management
+## 🧾 Invoices
+
+### Invoice Generation
 
 ```php
-// Find transaction
-$transaction = $user->findTransaction('txn_123');
+// Create invoice
+$invoice = $user->invoiceFor('Premium Subscription', 10000);
 
-// Get all transactions
-$transactions = $user->transactions()->get();
+// Get invoice PDF
+$pdf = $invoice->downloadPDF();
 
-// Refund transaction
-$refund = $user->refund('txn_123', 2500); // Partial refund RM 25.00
+// Get all invoices
+$invoices = $user->invoices();
 
-// Full refund
-$refund = $user->refund('txn_123');
+// Find specific invoice
+$invoice = $user->findInvoice('invoice_id');
 ```
 
-### Subscription Queries
-
-```php
-// Active subscriptions
-$active = $user->subscriptions()->active()->get();
-
-// Cancelled subscriptions
-$cancelled = $user->subscriptions()->cancelled()->get();
-
-// Subscriptions on trial
-$onTrial = $user->subscriptions()->onTrial()->get();
-
-// Subscriptions on grace period
-$onGrace = $user->subscriptions()->onGracePeriod()->get();
-```
-
-## Webhooks
-
-### Automatic Setup
-
-Webhooks are automatically configured with secure signature verification. The webhook endpoint is automatically registered at:
-
-```
-POST /chip/webhook
-```
-
-### Webhook Events
-
-Listen for webhook events in your `EventServiceProvider`:
-
-```php
-use Aizuddinmanap\CashierChip\Events\WebhookReceived;
-use Aizuddinmanap\CashierChip\Events\TransactionCompleted;
-use Aizuddinmanap\CashierChip\Events\SubscriptionUpdated;
-
-protected $listen = [
-    WebhookReceived::class => [
-        // Handle any webhook
-    ],
-    TransactionCompleted::class => [
-        // Handle completed transactions
-    ],
-    SubscriptionUpdated::class => [
-        // Handle subscription updates
-    ],
-];
-```
-
-### Webhook Commands
-
-Manage webhooks using Artisan commands:
-
-```bash
-# List all webhooks
-php artisan cashier:webhook list
-
-# Create new webhook
-php artisan cashier:webhook create
-
-# Delete webhook
-php artisan cashier:webhook delete
-```
-
-## Configuration
-
-The configuration file (`config/cashier.php`) provides comprehensive settings:
-
-```php
-return [
-    // Chip API Configuration
-    'chip' => [
-        'api_key' => env('CHIP_API_KEY'),
-        'brand_id' => env('CHIP_BRAND_ID'),
-        'api_url' => env('CHIP_API_URL', 'https://gate.chip-in.asia/api/v1'),
-    ],
-
-    // Webhook Configuration
-    'webhook' => [
-        'secret' => env('CHIP_WEBHOOK_SECRET'),
-        'tolerance' => env('CHIP_WEBHOOK_TOLERANCE', 300),
-    ],
-
-    // Currency Settings
-    'currency' => env('CASHIER_CURRENCY', 'MYR'),
-    'currency_locale' => env('CASHIER_CURRENCY_LOCALE', 'ms_MY'),
-
-    // Model Configuration
-    'model' => env('CASHIER_MODEL', App\Models\User::class),
-
-    // Path Configuration
-    'path' => env('CASHIER_PATH', 'chip'),
-
-    // Test Mode
-    'test_mode' => env('CHIP_TEST_MODE', false),
-];
-```
-
-## FPX (Malaysian Banking)
-
-### Supported Banks
-
-- Maybank2U
-- CIMB Clicks
-- Public Bank
-- RHB Bank
-- Hong Leong Bank
-- AmBank
-- Bank Islam
-- Affin Bank
-- Alliance Bank
-- Bank Rakyat
-- BSN
-- HSBC Bank
-- Kuwait Finance House
-- Bank Muamalat
-- OCBC Bank
-- Standard Chartered
-- UOB Bank
-- Agro Bank
-
-### Real-time Status
-
-```php
-use Aizuddinmanap\CashierChip\FPX;
-
-// Check system status
-$status = FPX::getSystemStatus();
-
-// Check specific availability
-$b2cAvailable = FPX::isB2cAvailable();  // Personal banking
-$b2b1Available = FPX::isB2b1Available(); // Corporate banking
-
-// Get banks with real-time status
-$banks = FPX::getBanksWithStatus();
-```
-
-## Testing
+## 🔍 Testing
 
 ### Running Tests
 
@@ -337,116 +511,235 @@ $banks = FPX::getBanksWithStatus();
 composer test
 ```
 
+### Test Coverage
+
+The package includes comprehensive tests:
+
+- ✅ 52 passing tests
+- ✅ API integration tests
+- ✅ Database schema tests
+- ✅ Webhook processing tests
+- ✅ FPX functionality tests
+- ✅ Refund processing tests (full and partial)
+- ✅ Transaction tracking tests
+- ✅ Customer management tests
+
 ### Test Configuration
 
-Set up test environment variables:
-
-```env
-CHIP_API_KEY=test_api_key
-CHIP_BRAND_ID=test_brand_id
-CHIP_WEBHOOK_SECRET=test_webhook_secret
-CHIP_TEST_MODE=true
+```php
+// In your tests
+Http::fake([
+    'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+        'id' => 'purchase_123',
+        'checkout_url' => 'https://checkout.chip-in.asia/123',
+    ]),
+]);
 ```
 
-## API Reference
+## 🗄️ Database Schema
 
-### Billable Methods
+Laravel Cashier Chip uses a well-structured database schema to track all payment and subscription data.
 
-| Method | Description |
-|--------|-------------|
-| `charge($amount, $options)` | Create one-time payment |
-| `newCharge($amount)` | Create payment builder |
-| `refund($transactionId, $amount)` | Refund transaction |
-| `findTransaction($id)` | Find transaction by ID |
-| `transactions()` | Get transaction relationship |
-| `newSubscription($type, $price)` | Create subscription builder |
-| `subscription($type)` | Get subscription |
-| `subscribed($type)` | Check if subscribed |
-| `onTrial($type)` | Check if on trial |
-| `createAsChipCustomer($data)` | Create Chip customer |
-| `updateChipCustomer($data)` | Update customer |
-| `asChipCustomer()` | Get Chip customer |
-| `hasChipId()` | Check if has Chip customer ID |
+### Required Migrations
 
-### Subscription Builder Methods
+The package includes these migrations:
 
-| Method | Description |
-|--------|-------------|
-| `trialDays($days)` | Set trial period |
-| `trialUntil($date)` | Set trial end date |
-| `skipTrial()` | Skip trial period |
-| `quantity($quantity)` | Set quantity |
-| `withMetadata($metadata)` | Add metadata |
-| `withOptions($options)` | Add options |
-| `create()` | Create subscription |
-| `add()` | Add to existing subscription |
+```bash
+2024_01_01_000001_add_chip_customer_columns.php    # Adds chip_id to users table
+2024_01_01_000002_create_subscriptions_table.php   # Subscription management
+2024_01_01_000003_create_customers_table.php       # Customer data
+2024_01_01_000003_create_subscription_items_table.php # Subscription items
+2024_01_01_000004_create_transactions_table.php    # Transaction tracking
+```
 
-### Transaction Builder Methods
+### Transactions Table Schema
 
-| Method | Description |
-|--------|-------------|
-| `currency($currency)` | Set currency |
-| `description($description)` | Set description |
-| `withMetadata($metadata)` | Add metadata |
-| `withOptions($options)` | Add options |
-| `create()` | Create transaction |
+```sql
+-- The transactions table handles all payment and refund records
+CREATE TABLE transactions (
+    id VARCHAR(255) PRIMARY KEY,
+    chip_id VARCHAR(255) UNIQUE,
+    customer_id VARCHAR(255),
+    billable_type VARCHAR(255),
+    billable_id BIGINT,
+    type VARCHAR(255) DEFAULT 'charge',     -- 'charge', 'refund'
+    status VARCHAR(255),                    -- 'pending', 'success', 'failed', 'refunded'
+    currency VARCHAR(3) DEFAULT 'MYR',
+    total INTEGER,                          -- Amount in cents
+    payment_method VARCHAR(255),            -- 'fpx', 'card', 'ewallet'
+    description TEXT,
+    metadata JSON,
+    refunded_from VARCHAR(255),             -- Links refunds to original transactions
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    
+    INDEX(billable_type, billable_id),
+    INDEX(customer_id),
+    INDEX(status),
+    INDEX(type),
+    INDEX(chip_id),
+    FOREIGN KEY(customer_id) REFERENCES customers(id)
+);
+```
 
-## Migration from Other Providers
-
-### From Laravel Cashier Stripe
+### Refund Transaction Tracking
 
 ```php
-// Stripe
-$user->charge(5000, ['currency' => 'myr']);
-$user->newSubscription('default', 'price_123')->create();
+// Example of refund transaction relationship
+$originalTransaction = [
+    'id' => 'txn_original_123',
+    'chip_id' => 'purchase_456',
+    'type' => 'charge',
+    'status' => 'success',
+    'total' => 10000,
+    'refunded_from' => null,
+];
 
-// Chip equivalent  
-$user->charge(5000, ['currency' => 'MYR']);
-$user->newSubscription('default', 'price_123')->create();
+$refundTransaction = [
+    'id' => 'txn_refund_789',
+    'chip_id' => 'refund_101',
+    'type' => 'refund',
+    'status' => 'refunded',
+    'total' => 5000,
+    'refunded_from' => 'txn_original_123',  // Links to original
+];
 ```
 
-### From Laravel Cashier Paddle
+## 🔧 Advanced Usage
+
+### Custom Payment Methods
 
 ```php
-// Paddle
-$user->newSubscription('default', 'plan_123')->create();
+// Get available payment methods
+$methods = $user->getAvailablePaymentMethods();
 
-// Chip equivalent
-$user->newSubscription('default', 'price_123')->create();
+// Check specific payment method
+if ($user->isPaymentMethodAvailable('fpx')) {
+    // FPX is available
+}
 ```
 
-## Laravel Cashier Compatibility
+### Recurring Tokens
 
-This package follows Laravel Cashier patterns and provides compatible method signatures:
+```php
+// Charge with saved token
+$payment = $user->chargeWithToken('purchase_id', [
+    'amount' => 10000,
+]);
 
-- ✅ `Billable` trait with standard methods
-- ✅ Subscription management with trials and grace periods
-- ✅ Customer model with morphed relationships
-- ✅ Automatic webhook handling with signature verification
-- ✅ Transaction management with refund support
-- ✅ Query scopes for subscriptions and transactions
-- ✅ Fluent builder patterns for payments and subscriptions
+// Delete recurring token
+$user->deleteRecurringToken('purchase_id');
+```
 
-## Contributing
+### Currency Formatting
 
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
+```php
+use Aizuddinmanap\CashierChip\Cashier;
 
-## Security
+// Format amount
+$formatted = Cashier::formatAmount(10000, 'MYR'); // "RM 100.00"
 
-If you discover any security related issues, please email security@aizuddinmanap.com instead of using the issue tracker.
+// Use custom currency
+Cashier::useCurrency('USD', 'en_US');
+```
 
-## Credits
+## 🐛 Troubleshooting
 
-- [Aizuddin Manap](https://github.com/aizuddinmanap)
-- [All Contributors](../../contributors)
+### Common Issues
 
-## License
+1. **Missing Client Email**: Ensure all API calls include client email
+2. **Webhook Verification**: Check webhook secret configuration
+3. **Database Columns**: Use `total` instead of `amount` for transactions
+4. **API Endpoints**: All endpoints use trailing slashes
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+### Refund-Specific Issues
 
-## Official Links
+1. **Refund Amount Exceeds Original**: Ensure refund amount doesn't exceed original transaction amount
+2. **Transaction Not Found**: Verify transaction ID exists and belongs to the user
+3. **Already Refunded**: Check if transaction has already been refunded before processing
+4. **Refund API Failures**: Check Chip API credentials and network connectivity
 
-- [Chip Website](https://www.chip-in.asia/)
-- [Chip API Documentation](https://docs.chip-in.asia/)
-- [Chip Developer Dashboard](https://portal.chip-in.asia/)
-- [Laravel Cashier Documentation](https://laravel.com/docs/billing) 
+```php
+// Debug refund issues
+$transaction = $user->findTransaction('transaction_id');
+
+if (!$transaction) {
+    Log::error("Transaction not found: transaction_id");
+    return;
+}
+
+Log::info("Transaction status: " . $transaction->status);
+Log::info("Transaction type: " . $transaction->type());
+Log::info("Refund eligible: " . ($transaction->successful() ? 'Yes' : 'No'));
+```
+
+### Webhook Debugging
+
+```php
+// Add webhook debugging in your EventServiceProvider
+Event::listen(\Aizuddinmanap\CashierChip\Events\WebhookReceived::class, function ($event) {
+    Log::info('Webhook received', [
+        'event_type' => $event->payload['event_type'] ?? 'unknown',
+        'payload' => $event->payload,
+    ]);
+});
+```
+
+### Debug Mode
+
+Enable debug logging in your configuration:
+
+```php
+'logging' => [
+    'enabled' => true,
+    'channel' => 'daily',
+],
+```
+
+## 📚 Laravel Cashier Compatibility
+
+This package is **100% compatible** with Laravel Cashier patterns:
+
+| Feature | Laravel Cashier | Cashier Chip |
+|---------|-----------------|--------------|
+| Billable Trait | ✅ | ✅ |
+| Subscriptions | ✅ | ✅ |
+| One-time Payments | ✅ | ✅ |
+| Webhooks | ✅ | ✅ |
+| Customer Management | ✅ | ✅ |
+| Invoices | ✅ | ✅ |
+| Trials | ✅ | ✅ |
+| Method Signatures | ✅ | ✅ |
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+```bash
+git clone https://github.com/aizuddinmanap/cashier-chip.git
+cd cashier-chip
+composer install
+composer test
+```
+
+## 📄 License
+
+Laravel Cashier Chip is open-sourced software licensed under the [MIT license](LICENSE.md).
+
+## 🙏 Credits
+
+- **Aizuddin Manap** - Original author and maintainer
+- **Laravel Cashier** - Inspiration and API patterns
+- **Chip** - Payment processing platform
+- **Laravel Community** - Framework and ecosystem
+
+## 📞 Support
+
+- **Documentation**: [Full documentation](https://github.com/aizuddinmanap/cashier-chip/wiki)
+- **Issues**: [GitHub Issues](https://github.com/aizuddinmanap/cashier-chip/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/aizuddinmanap/cashier-chip/discussions)
+
+---

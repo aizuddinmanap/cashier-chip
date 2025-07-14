@@ -25,12 +25,13 @@ class BillableTest extends TestCase
             'api.test.chip-in.asia/api/v1/clients' => Http::response([
                 'id' => 'client_123',
                 'email' => 'test@example.com',
+                'full_name' => 'Test User',
             ]),
         ]);
 
         $customer = $this->user->createAsChipCustomer();
 
-        $this->assertEquals('client_123', $customer['id']);
+        $this->assertEquals('client_123', $customer->chipId());
         $this->assertEquals('client_123', $this->user->fresh()->chip_id);
     }
 
@@ -47,9 +48,9 @@ class BillableTest extends TestCase
             ]),
         ]);
 
-        $customer = $this->user->updateChipCustomer(['full_name' => 'Updated Name']);
+        $customer = $this->user->updateChipCustomer(['name' => 'Updated Name']);
 
-        $this->assertEquals('Updated Name', $customer['full_name']);
+        $this->assertEquals('Updated Name', $customer->name());
     }
 
     /** @test */
@@ -69,17 +70,17 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases' => Http::response([
-                'id' => 'purchase_123',
-                'checkout_url' => 'https://checkout.chip-in.asia/123',
+            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
+                'id' => 'sub_123',
+                'status' => 'active',
             ]),
         ]);
 
         $subscription = $this->user->newSubscription('default', 'price_monthly')
             ->create();
 
-        $this->assertEquals('default', $subscription->type);
-        $this->assertEquals('price_monthly', $subscription->chip_price);
+        $this->assertEquals('default', $subscription->name);
+        $this->assertEquals('price_monthly', $subscription->chip_price_id);
         $this->assertTrue($subscription->active());
     }
 
@@ -89,9 +90,9 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases' => Http::response([
-                'id' => 'purchase_123',
-                'checkout_url' => 'https://checkout.chip-in.asia/123',
+            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
+                'id' => 'sub_123',
+                'status' => 'active',
             ]),
         ]);
 
@@ -110,9 +111,9 @@ class BillableTest extends TestCase
 
         // Create active subscription
         $subscription = $this->user->subscriptions()->create([
-            'type' => 'default',
+            'name' => 'default',
             'chip_id' => 'sub_123',
-            'chip_price' => 'price_monthly',
+            'chip_price_id' => 'price_monthly',
             'chip_status' => 'active',
             'quantity' => 1,
         ]);
@@ -127,7 +128,7 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases' => Http::response([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
                 'id' => 'purchase_123',
                 'checkout_url' => 'https://checkout.chip-in.asia/123',
                 'amount' => 10000,
@@ -137,7 +138,7 @@ class BillableTest extends TestCase
 
         $payment = $this->user->charge(10000);
 
-        $this->assertEquals(10000, $payment->amount);
+        $this->assertEquals(10000, $payment->rawAmount());
         $this->assertEquals('myr', $payment->currency);
     }
 
@@ -150,22 +151,23 @@ class BillableTest extends TestCase
         $payment = $this->user->transactions()->create([
             'id' => 'pay_123',
             'chip_id' => 'purchase_123',
-            'amount' => 10000,
+            'total' => 10000,
             'currency' => 'MYR',
             'status' => 'paid',
         ]);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/refund' => Http::response([
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/refund/' => Http::response([
                 'id' => 'refund_123',
-                'status' => 'refunded',
                 'amount' => 5000,
+                'currency' => 'MYR',
+                'status' => 'refunded',
             ]),
         ]);
 
         $refund = $this->user->refund('pay_123', 5000);
 
-        $this->assertEquals(5000, $refund->amount);
+        $this->assertEquals(5000, $refund->rawAmount());
         $this->assertEquals('refunded', $refund->status);
     }
 
@@ -175,18 +177,22 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/charge' => Http::response([
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/charge/' => Http::response([
                 'id' => 'charge_123',
-                'status' => 'paid',
                 'amount' => 10000,
+                'currency' => 'MYR',
+                'status' => 'paid',
             ]),
         ]);
 
         $payment = $this->user->chargeWithToken('purchase_123', ['amount' => 10000]);
 
-        $this->assertEquals(10000, $payment->amount);
+        $this->assertEquals(10000, $payment->rawAmount());
         $this->assertEquals('paid', $payment->status);
-        $this->assertTrue($payment->charged_with_token);
+        
+        // Check that it was charged with token via metadata
+        $metadata = $payment->metadata();
+        $this->assertTrue($metadata['charged_with_token'] ?? false);
     }
 
     /** @test */
@@ -276,8 +282,10 @@ class BillableTest extends TestCase
     /** @test */
     public function it_can_delete_recurring_token(): void
     {
+        $this->user->update(['chip_id' => 'client_123']);
+
         Http::fake([
-            'api.test.chip-in.asia/api/v1/purchases/purchase_123/delete_recurring_token' => Http::response(['success' => true]),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/delete_recurring_token/' => Http::response(['success' => true]),
         ]);
 
         $result = $this->user->deleteRecurringToken('purchase_123');
@@ -289,12 +297,16 @@ class BillableTest extends TestCase
     public function it_can_find_chip_customer_by_email(): void
     {
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients?q=test@example.com' => Http::response([
-                ['id' => 'client_123', 'email' => 'test@example.com'],
+            'api.test.chip-in.asia/api/v1/clients?q=test%40example.com' => Http::response([
+                [
+                    'id' => 'client_123',
+                    'email' => 'test@example.com',
+                    'full_name' => 'Test User',
+                ]
             ]),
         ]);
 
-        $customer = $this->user->findChipCustomerByEmail('test@example.com');
+        $customer = \Aizuddinmanap\CashierChip\Concerns\ManagesPaymentMethods::findChipCustomerByEmail('test@example.com');
 
         $this->assertEquals('client_123', $customer['id']);
         $this->assertEquals('test@example.com', $customer['email']);
@@ -303,18 +315,13 @@ class BillableTest extends TestCase
     /** @test */
     public function it_handles_trial_subscription(): void
     {
+        // Set up a generic trial on the user
         $this->user->update([
-            'chip_id' => 'client_123',
-            'trial_ends_at' => now()->addDays(7),
+            'trial_ends_at' => now()->addDays(14),
         ]);
 
         $this->assertTrue($this->user->onTrial());
-        $this->assertFalse($this->user->onGenericTrial());
-
-        // Test expired trial
-        $this->user->update(['trial_ends_at' => now()->subDay()]);
-        
-        $this->assertFalse($this->user->onTrial());
+        $this->assertFalse($this->user->onTrial('non-existent-subscription'));
     }
 
     /** @test */

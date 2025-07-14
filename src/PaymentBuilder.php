@@ -175,7 +175,7 @@ class PaymentBuilder
         $payment = $this->billable->transactions()->create([
             'id' => $response['id'] ?? 'pay_' . uniqid(),
             'chip_id' => $response['id'] ?? 'chip_' . uniqid(),
-            'amount' => $this->amount,
+            'total' => $this->amount,
             'currency' => $this->currency,
             'status' => 'pending',
         ]);

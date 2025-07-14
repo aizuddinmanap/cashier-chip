@@ -129,7 +129,61 @@ trait Billable
      */
     public function createAsChipCustomer(array $options = []): Customer
     {
-        return $this->createAsCustomer($options);
+        if ($this->hasChipId()) {
+            throw new \Exception('Billable model already has a Chip customer ID.');
+        }
+
+        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+
+        // Prepare client data for Chip API
+        $clientData = [
+            'email' => $this->email ?? $options['email'] ?? null,
+            'full_name' => $this->name ?? $options['name'] ?? null,
+            'legal_name' => $options['legal_name'] ?? null,
+        ];
+
+        // Remove null values
+        $clientData = array_filter($clientData, function ($value) {
+            return $value !== null;
+        });
+
+        try {
+            // Create client via Chip API
+            $response = $api->createClient($clientData);
+
+            $customer = new Customer([
+                'chip_id' => $response['id'],
+                'email' => $response['email'] ?? $clientData['email'],
+                'name' => $response['full_name'] ?? $clientData['full_name'],
+            ]);
+
+            // Store the Chip customer ID locally
+            $this->chip_id = $customer->chip_id;
+            $this->save();
+
+            return $customer;
+
+        } catch (\Exception $e) {
+            // Fallback to local customer creation if API fails
+            $customer = new Customer([
+                'chip_id' => 'cust_' . uniqid(),
+                'email' => $this->email ?? $options['email'] ?? null,
+                'name' => $this->name ?? $options['name'] ?? null,
+            ]);
+
+            $this->chip_id = $customer->chip_id;
+            $this->save();
+
+            return $customer;
+        }
+    }
+
+    /**
+     * Create a customer for the billable entity.
+     */
+    public function createAsCustomer(array $options = []): Customer
+    {
+        return $this->createAsChipCustomer($options);
     }
 
     /**

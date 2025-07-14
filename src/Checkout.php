@@ -319,10 +319,47 @@ class Checkout
     }
 
     /**
-     * Get all checkout data.
+     * Get the checkout data.
      */
     public function getData(): array
     {
         return $this->data;
+    }
+
+    /**
+     * Get the amount for the checkout.
+     */
+    public function getAmount(): ?int
+    {
+        return $this->data['amount'] ?? null;
+    }
+
+    /**
+     * Get the currency for the checkout.
+     */
+    public function getCurrency(): ?string
+    {
+        return $this->data['currency'] ?? null;
+    }
+
+    /**
+     * Get the FPX bank code.
+     */
+    public function getFpxBank(): ?string
+    {
+        return $this->data['fpx_bank'] ?? null;
+    }
+
+    /**
+     * Magic getter for backward compatibility.
+     */
+    public function __get(string $name)
+    {
+        return match ($name) {
+            'amount' => $this->getAmount(),
+            'currency' => $this->getCurrency(),
+            'fpxBank' => $this->getFpxBank(),
+            default => $this->data[$name] ?? null,
+        };
     }
 } 
