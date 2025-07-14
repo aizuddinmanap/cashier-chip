@@ -87,6 +87,20 @@ class BillableTest extends TestCase
     /** @test */
     public function it_can_create_subscription_with_trial(): void
     {
+        // Trial subscriptions are local-only and don't require API calls
+        $subscription = $this->user->newSubscription('premium', 'price_yearly')
+            ->trialDays(14)
+            ->create();
+
+        $this->assertTrue($subscription->onTrial());
+        $this->assertNotNull($subscription->trial_ends_at);
+        $this->assertEquals('trialing', $subscription->chip_status);
+        $this->assertStringStartsWith('trial_', $subscription->chip_id);
+    }
+
+    /** @test */
+    public function it_can_create_paid_subscription_without_trial(): void
+    {
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
@@ -97,11 +111,44 @@ class BillableTest extends TestCase
         ]);
 
         $subscription = $this->user->newSubscription('premium', 'price_yearly')
-            ->trialDays(14)
+            ->skipTrial()
             ->create();
 
-        $this->assertTrue($subscription->onTrial());
-        $this->assertNotNull($subscription->trial_ends_at);
+        $this->assertFalse($subscription->onTrial());
+        $this->assertNull($subscription->trial_ends_at);
+        $this->assertEquals('active', $subscription->chip_status);
+        $this->assertEquals('sub_123', $subscription->chip_id);
+    }
+
+    /** @test */
+    public function it_differentiates_between_trial_and_paid_subscriptions(): void
+    {
+        // Create trial subscription (local-only)
+        $trialSubscription = $this->user->newSubscription('trial', 'price_monthly')
+            ->trialDays(7)
+            ->create();
+
+        $this->assertTrue($trialSubscription->onTrial());
+        $this->assertEquals('trialing', $trialSubscription->chip_status);
+        $this->assertStringStartsWith('trial_', $trialSubscription->chip_id);
+
+        // Create paid subscription (API call)
+        $this->user->update(['chip_id' => 'client_123']);
+
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
+                'id' => 'sub_paid_123',
+                'status' => 'active',
+            ]),
+        ]);
+
+        $paidSubscription = $this->user->newSubscription('paid', 'price_yearly')
+            ->skipTrial()
+            ->create();
+
+        $this->assertFalse($paidSubscription->onTrial());
+        $this->assertEquals('active', $paidSubscription->chip_status);
+        $this->assertEquals('sub_paid_123', $paidSubscription->chip_id);
     }
 
     /** @test */

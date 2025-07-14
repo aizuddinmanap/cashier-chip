@@ -125,15 +125,23 @@ class SubscriptionBuilder
      */
     public function create(array $options = []): Subscription
     {
-        // Ensure the billable model has a Chip customer
-        if (! $this->billable->hasChipId()) {
-            $this->billable->createAsChipCustomer();
-        }
-
         // Merge builder options with method options
         $options = array_merge($this->options, $options);
 
+        // Check if this is a trial-only subscription
+        $isTrialOnly = $this->trialEnds && ! $this->skipTrial;
+
         try {
+            if ($isTrialOnly) {
+                // Trial subscriptions are local-only (no API call needed)
+                return $this->createTrialSubscription($options);
+            }
+
+            // For paid subscriptions, ensure the billable model has a Chip customer
+            if (! $this->billable->hasChipId()) {
+                $this->billable->createAsChipCustomer();
+            }
+
             // Create subscription via Chip API
             $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
             
@@ -143,10 +151,6 @@ class SubscriptionBuilder
                 'quantity' => $this->quantity,
                 'metadata' => $this->metadata,
             ];
-
-            if ($this->trialEnds && ! $this->skipTrial) {
-                $subscriptionData['trial_end'] = $this->trialEnds->getTimestamp();
-            }
 
             $subscriptionData = array_merge($subscriptionData, $options);
 
@@ -168,6 +172,23 @@ class SubscriptionBuilder
         } catch (\Exception $e) {
             throw new \Exception("Failed to create subscription: {$e->getMessage()}");
         }
+    }
+
+    /**
+     * Create a trial-only subscription (local database only, no API call).
+     */
+    protected function createTrialSubscription(array $options = []): Subscription
+    {
+        // Create local subscription record for trial
+        return $this->billable->subscriptions()->create([
+            'name' => $this->name,
+            'chip_id' => 'trial_' . uniqid(), // Generate local trial ID
+            'chip_status' => 'trialing',
+            'chip_price_id' => $this->priceId,
+            'quantity' => $this->quantity,
+            'trial_ends_at' => $this->trialEnds,
+            'ends_at' => null,
+        ]);
     }
 
     /**
