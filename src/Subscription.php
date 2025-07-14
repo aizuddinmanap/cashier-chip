@@ -253,9 +253,30 @@ class Subscription extends Model
      */
     public function cancel(): self
     {
-        // Implementation would make API call to Chip to cancel subscription
-        // For now, we'll just mark it as cancelled locally
-        $this->fill(['ends_at' => Carbon::now()])->save();
+        // Skip API call for trial-only subscriptions
+        if ($this->onTrial() && ! $this->hasChipId()) {
+            $this->fill(['ends_at' => Carbon::now()])->save();
+            return $this;
+        }
+
+        // For paid subscriptions, make API call to Chip
+        if ($this->hasChipId()) {
+            try {
+                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+                $api->cancelSubscription($this->chip_id, [
+                    'effective_from' => 'next_billing_period'
+                ]);
+            } catch (\Exception $e) {
+                // Log error but continue with local cancellation
+                \Log::warning('Failed to cancel subscription via Chip API: ' . $e->getMessage());
+            }
+        }
+
+        // Mark as cancelled at end of billing period
+        $this->fill(['ends_at' => $this->ends_at ?? Carbon::now()->addDays(30)])->save();
+
+        // Dispatch cancellation event
+        event(new \Aizuddinmanap\CashierChip\Events\SubscriptionCanceled($this));
 
         return $this;
     }
@@ -265,20 +286,77 @@ class Subscription extends Model
      */
     public function cancelNow(): self
     {
-        // Implementation would make API call to Chip to cancel subscription immediately
+        // Skip API call for trial-only subscriptions
+        if ($this->onTrial() && ! $this->hasChipId()) {
+            $this->fill(['ends_at' => Carbon::now()])->save();
+            return $this;
+        }
+
+        // For paid subscriptions, make API call to Chip
+        if ($this->hasChipId()) {
+            try {
+                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+                $api->cancelSubscription($this->chip_id, [
+                    'effective_from' => 'immediately'
+                ]);
+            } catch (\Exception $e) {
+                // Log error but continue with local cancellation
+                \Log::warning('Failed to cancel subscription via Chip API: ' . $e->getMessage());
+            }
+        }
+
+        // Mark as cancelled immediately
         $this->fill(['ends_at' => Carbon::now()])->save();
+
+        // Dispatch cancellation event
+        event(new \Aizuddinmanap\CashierChip\Events\SubscriptionCanceled($this));
 
         return $this;
     }
 
     /**
-     * Resume a cancelled subscription.
+     * Stop the subscription from cancelling (remove scheduled cancellation).
      */
-    public function resume(): self
+    public function stopCancellation(): self
     {
-        // Implementation would make API call to Chip to resume subscription
+        // Skip API call for trial-only subscriptions
+        if ($this->onTrial() && ! $this->hasChipId()) {
+            $this->fill(['ends_at' => null])->save();
+            return $this;
+        }
+
+        // For paid subscriptions, make API call to Chip
+        if ($this->hasChipId()) {
+            try {
+                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+                $api->updateSubscription($this->chip_id, [
+                    'scheduled_change' => null
+                ]);
+            } catch (\Exception $e) {
+                // Log error but continue with local update
+                \Log::warning('Failed to stop cancellation via Chip API: ' . $e->getMessage());
+            }
+        }
+
+        // Remove scheduled cancellation
         $this->fill(['ends_at' => null])->save();
 
         return $this;
+    }
+
+    /**
+     * Resume a cancelled subscription (alias for stopCancellation).
+     */
+    public function resume(): self
+    {
+        return $this->stopCancellation();
+    }
+
+    /**
+     * Check if the subscription has a Chip ID (not trial-only).
+     */
+    protected function hasChipId(): bool
+    {
+        return ! empty($this->chip_id) && ! str_starts_with($this->chip_id, 'trial_');
     }
 } 

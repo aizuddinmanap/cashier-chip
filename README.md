@@ -266,15 +266,165 @@ if ($user->onTrial()) {
 
 ### Managing Subscriptions
 
+#### Subscription Cancellation
+
+Laravel Cashier Chip provides comprehensive subscription cancellation functionality, following Laravel Cashier Paddle patterns.
+
 ```php
-// Cancel subscription
-$user->subscription('default')->cancel();
+// Cancel at end of billing period (graceful cancellation)
+$subscription = $user->subscription('default');
+$subscription->cancel();
 
-// Resume subscription
-$user->subscription('default')->resume();
+// Cancel immediately
+$subscription = $user->subscription('default');
+$subscription->cancelNow();
 
+// Resume cancelled subscription (remove scheduled cancellation)
+$subscription = $user->subscription('default');
+$subscription->resume();
+// or
+$subscription->stopCancellation(); // Same as resume()
+```
+
+#### Cancellation Status Checking
+
+```php
+$subscription = $user->subscription('default');
+
+// Check if subscription is cancelled
+if ($subscription->cancelled()) {
+    // Subscription has been cancelled (but may still be active during grace period)
+}
+
+// Check if subscription is on grace period
+if ($subscription->onGracePeriod()) {
+    // Subscription is cancelled but still active until ends_at
+    echo "Subscription ends on " . $subscription->ends_at->format('Y-m-d');
+}
+
+// Combined status checking
+if ($subscription->cancelled() && $subscription->onGracePeriod()) {
+    // Subscription is cancelled but user still has access
+    echo "Your subscription will end on " . $subscription->ends_at->format('Y-m-d');
+} elseif ($subscription->cancelled()) {
+    // Subscription has ended
+    echo "Your subscription has ended";
+} else {
+    // Subscription is active
+    echo "Your subscription is active";
+}
+```
+
+#### Billable Model Convenience Methods
+
+```php
+// Cancel specific subscription by name
+$user->cancelSubscription('default');     // Graceful cancellation
+$user->cancelSubscription('premium');     // Cancel premium subscription
+
+// Cancel immediately by name
+$user->cancelSubscriptionNow('default');  // Immediate cancellation
+
+// Cancel all active subscriptions
+$user->cancelAllSubscriptions();          // Cancels all active subscriptions
+
+// These methods return the subscription instance or null
+$subscription = $user->cancelSubscription('premium');
+if ($subscription) {
+    echo "Premium subscription cancelled successfully";
+}
+```
+
+#### Trial Subscription Handling
+
+The cancellation system intelligently handles trial subscriptions:
+
+```php
+// Trial-only subscriptions (no API calls made)
+$trialSubscription = $user->newSubscription('default', 'price_monthly')
+    ->trialDays(14)
+    ->create();
+
+$trialSubscription->cancel(); // Local cancellation only, no CHIP API call
+
+// Paid subscriptions (full API integration)
+$paidSubscription = $user->newSubscription('premium', 'price_yearly')
+    ->create();
+
+$paidSubscription->cancel(); // Makes API call to CHIP + local cancellation
+```
+
+#### Advanced Cancellation Examples
+
+```php
+// Check subscription status and handle accordingly
+$subscription = $user->subscription('default');
+
+if ($subscription && $subscription->active()) {
+    if ($subscription->onTrial()) {
+        // Cancel trial immediately (no billing impact)
+        $subscription->cancelNow();
+        $message = "Trial cancelled immediately";
+    } else {
+        // Cancel at end of billing period (user keeps access)
+        $subscription->cancel();
+        $message = "Subscription cancelled. Access until " . $subscription->ends_at->format('M d, Y');
+    }
+}
+
+// Bulk cancellation with notifications
+$cancelledCount = 0;
+$user->subscriptions()->active()->each(function ($subscription) use (&$cancelledCount) {
+    $subscription->cancel();
+    $cancelledCount++;
+});
+
+if ($cancelledCount > 0) {
+    // Send cancellation notification email
+    Mail::to($user->email)->send(new SubscriptionsCancelledMail($cancelledCount));
+}
+
+// Restore cancelled subscription
+$subscription = $user->subscription('default');
+if ($subscription->cancelled() && $subscription->onGracePeriod()) {
+    $subscription->resume();
+    $message = "Subscription restored successfully";
+}
+```
+
+#### Error Handling
+
+```php
+try {
+    $subscription = $user->subscription('default');
+    
+    if (!$subscription) {
+        throw new \Exception('Subscription not found');
+    }
+    
+    if (!$subscription->active()) {
+        throw new \Exception('Cannot cancel inactive subscription');
+    }
+    
+    $subscription->cancel();
+    
+    // Dispatch custom event
+    event(new SubscriptionCancellationRequested($user, $subscription));
+    
+} catch (\Exception $e) {
+    Log::error('Subscription cancellation failed: ' . $e->getMessage());
+    return back()->with('error', 'Failed to cancel subscription. Please try again.');
+}
+```
+
+#### Subscription Plan Changes
+
+```php
 // Change subscription plan
 $user->subscription('default')->swap('price_yearly');
+
+// Change plan with prorating
+$user->subscription('default')->swapAndInvoice('price_yearly');
 ```
 
 ## 🏦 FPX (Malaysian Bank Transfers)

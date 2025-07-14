@@ -6,6 +6,7 @@ namespace Aizuddinmanap\CashierChip\Http\Controllers;
 
 use Aizuddinmanap\CashierChip\Events\WebhookReceived;
 use Aizuddinmanap\CashierChip\Http\Middleware\VerifyWebhookSignature;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
@@ -211,9 +212,23 @@ class WebhookController extends Controller
         $subscription = \Aizuddinmanap\CashierChip\Subscription::where('chip_id', $subscriptionId)->first();
         
         if ($subscription) {
+            // Determine if this is immediate or scheduled cancellation
+            $cancelledAt = isset($subscriptionData['cancelled_at']) 
+                ? Carbon::parse($subscriptionData['cancelled_at'])
+                : now();
+            
+            // Set ends_at based on cancellation type
+            $endsAt = $cancelledAt;
+            
+            // If there's a next_billing_date and it's in the future, use grace period
+            if (isset($subscriptionData['next_billing_date']) && 
+                Carbon::parse($subscriptionData['next_billing_date'])->isFuture()) {
+                $endsAt = Carbon::parse($subscriptionData['next_billing_date']);
+            }
+
             $subscription->update([
                 'chip_status' => 'cancelled',
-                'ends_at' => now(),
+                'ends_at' => $endsAt,
             ]);
 
             // Dispatch subscription cancelled event

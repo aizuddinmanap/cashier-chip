@@ -58,4 +58,42 @@ trait ManagesSubscriptions
     {
         return $this->subscriptions->sortByDesc('created_at')->first();
     }
+
+    /**
+     * Cancel all of the entity's subscriptions.
+     */
+    public function cancelAllSubscriptions(): void
+    {
+        $this->subscriptions()->active()->each(function (Subscription $subscription) {
+            $subscription->cancel();
+        });
+    }
+
+    /**
+     * Cancel a specific subscription by name.
+     */
+    public function cancelSubscription(string $name = 'default'): ?Subscription
+    {
+        $subscription = $this->subscription($name);
+        
+        if ($subscription && $subscription->active()) {
+            $subscription->cancel();
+        }
+        
+        return $subscription;
+    }
+
+    /**
+     * Immediately cancel a specific subscription by name.
+     */
+    public function cancelSubscriptionNow(string $name = 'default'): ?Subscription
+    {
+        $subscription = $this->subscription($name);
+        
+        if ($subscription && $subscription->active()) {
+            $subscription->cancelNow();
+        }
+        
+        return $subscription;
+    }
 } 

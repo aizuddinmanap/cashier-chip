@@ -320,6 +320,30 @@ class ChipApi
     }
 
     /**
+     * Cancel a subscription via Chip API.
+     */
+    public function cancelSubscription(string $subscriptionId, array $data = []): array
+    {
+        return $this->post("subscriptions/{$subscriptionId}/cancel", $data);
+    }
+
+    /**
+     * Update a subscription via Chip API.
+     */
+    public function updateSubscription(string $subscriptionId, array $data): array
+    {
+        return $this->put("subscriptions/{$subscriptionId}", $data);
+    }
+
+    /**
+     * Get a subscription via Chip API.
+     */
+    public function getSubscription(string $subscriptionId): array
+    {
+        return $this->get("subscriptions/{$subscriptionId}");
+    }
+
+    /**
      * Get FPX B2C status from Chip API.
      */
     public function getFpxB2cStatus(): array
