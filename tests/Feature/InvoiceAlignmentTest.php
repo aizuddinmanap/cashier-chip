@@ -416,4 +416,46 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('Test Service', $newInvoice->description());
         $this->assertEquals(1000, $newInvoice->rawTotal());
     }
+
+    #[Test]
+    public function invoice_has_proper_timestamp_fields()
+    {
+        $createdTime = Carbon::parse('2024-01-15 10:30:00');
+        $updatedTime = Carbon::parse('2024-01-15 11:45:00');
+        
+        // Create transaction with specific timestamps
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_timestamp_test',
+            'chip_id' => 'purchase_timestamp',
+            'type' => 'charge',
+            'status' => 'success',
+            'currency' => 'MYR',
+            'total' => 5990,
+            'description' => 'Timestamp Test Service',
+            'created_at' => $createdTime,
+            'updated_at' => $updatedTime,
+        ]);
+
+        // Convert to invoice
+        $invoice = $this->user->findInvoice('txn_timestamp_test');
+
+        // Verify all timestamp fields are properly set
+        $this->assertNotNull($invoice->date, 'Invoice date field should not be null');
+        $this->assertNotNull($invoice->created_at, 'Invoice created_at field should not be null (BUG FIX)');
+        $this->assertNotNull($invoice->updated_at, 'Invoice updated_at field should not be null (BUG FIX)');
+        
+        // Verify timestamps match the original transaction
+        $this->assertEquals($createdTime->format('Y-m-d H:i:s'), $invoice->date->format('Y-m-d H:i:s'));
+        $this->assertEquals($createdTime->format('Y-m-d H:i:s'), $invoice->created_at->format('Y-m-d H:i:s'));
+        $this->assertEquals($updatedTime->format('Y-m-d H:i:s'), $invoice->updated_at->format('Y-m-d H:i:s'));
+        
+        // Verify Laravel view compatibility (the main issue this fixes)
+        $this->assertInstanceOf(Carbon::class, $invoice->created_at, 'created_at should be Carbon instance for views');
+        $this->assertInstanceOf(Carbon::class, $invoice->updated_at, 'updated_at should be Carbon instance for views');
+        
+        // Test common view methods that were failing before the fix
+        $this->assertIsString($invoice->created_at->format('M d, Y'), 'Should format properly for views');
+        $this->assertIsString($invoice->created_at->diffForHumans(), 'Should calculate relative time for views');
+        $this->assertIsString($invoice->updated_at->toDateTimeString(), 'Should convert to string for views');
+    }
 } 

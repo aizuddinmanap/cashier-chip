@@ -244,6 +244,9 @@ trait ManagesInvoices
             'tax' => 0, // CashierChip doesn't handle tax by default
             'billable' => $this,
             'transaction' => $transaction,
+            // Laravel compatibility fields
+            'created_at' => $transaction->created_at,
+            'updated_at' => $transaction->updated_at,
         ]);
     }
 

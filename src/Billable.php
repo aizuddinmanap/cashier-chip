@@ -443,6 +443,9 @@ trait Billable
             'tax' => 0,
             'billable' => $this,
             'transaction' => $transaction,
+            // Laravel compatibility fields
+            'created_at' => $transaction->created_at,
+            'updated_at' => $transaction->updated_at,
         ]);
     }
 
