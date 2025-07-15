@@ -458,4 +458,62 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertIsString($invoice->created_at->diffForHumans(), 'Should calculate relative time for views');
         $this->assertIsString($invoice->updated_at->toDateTimeString(), 'Should convert to string for views');
     }
+
+    #[Test]
+    public function pdf_generation_handles_null_paid_at_dates()
+    {
+        // Create transaction with null processed_at (which becomes paid_at in invoice)
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_null_paid_at',
+            'chip_id' => 'purchase_null_paid',
+            'type' => 'charge',
+            'status' => 'success', // Status is successful but no processed_at
+            'currency' => 'MYR',
+            'total' => 2990,
+            'description' => 'PDF Date Test Service',
+            'processed_at' => null, // This becomes paid_at in invoice conversion
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Convert to invoice
+        $invoice = $this->user->findInvoice('txn_null_paid_at');
+
+        // Verify the invoice is marked as paid but has null paid_at
+        $this->assertTrue($invoice->paid(), 'Invoice should be marked as paid');
+        $this->assertNull($invoice->paidAt(), 'Invoice paid_at should be null');
+
+        // Test PDF HTML generation with null paid_at (this was crashing in v1.0.13)
+        $reflection = new \ReflectionClass($invoice);
+        $method = $reflection->getMethod('generateInvoiceHTML');
+        $method->setAccessible(true);
+
+        // This should not throw "Call to a member function format() on null" exception
+        $html = $method->invoke($invoice, [
+            'company_name' => 'Test Company',
+            'company_address' => '123 Test Street',
+            'company_phone' => '+60 3-1234 5678',
+            'company_email' => 'test@example.com'
+        ]);
+
+        // Verify the HTML contains the N/A fallback for null paid_at
+        $this->assertStringContainsString('Paid on:', $html, 'Should show payment section for paid invoice');
+        $this->assertStringContainsString('N/A', $html, 'Should show N/A for null paid_at date');
+
+        // Verify PDF generation methods exist and don't crash
+        $this->assertTrue(method_exists($invoice, 'downloadPDF'), 'downloadPDF method should exist');
+        $this->assertTrue(method_exists($invoice, 'viewPDF'), 'viewPDF method should exist');
+
+        // Test that actual PDF generation doesn't crash (if dompdf is available)
+        if (class_exists(\Dompdf\Dompdf::class)) {
+            try {
+                $response = $invoice->downloadPDF([
+                    'company_name' => 'Test Company'
+                ]);
+                $this->assertEquals('application/pdf', $response->headers->get('Content-Type'));
+            } catch (Exception $e) {
+                $this->fail('PDF generation should not crash with null paid_at: ' . $e->getMessage());
+            }
+        }
+    }
 } 

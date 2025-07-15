@@ -6,11 +6,12 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.13**
+## 🎉 **Stable Release: v1.0.14**
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 71 Tests Passing** - Comprehensive test coverage with 266+ assertions  
+- ✅ **All 72 Tests Passing** - Comprehensive test coverage with 273+ assertions  
+- ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
 - ✅ **Timestamp Fields Fixed** - Invoice objects now have proper `created_at` and `updated_at` fields
 - ✅ **Laravel View Compatibility** - No more null pointer errors in Blade templates
@@ -805,7 +806,7 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 
 ### PDF Generation Errors
 
-**Issue**: "Call to a member function on null" when generating PDFs
+**Issue 1**: "Call to a member function on null" when generating PDFs
 
 **Cause**: This was a null pointer error in v1.0.12 and earlier when the billable entity was null.
 
@@ -817,7 +818,19 @@ $invoice = $user->findInvoice('txn_123');
 $response = $invoice->downloadPDF($brandingData); // No longer crashes
 ```
 
-**Workaround for older versions**: Ensure billable entity is properly set when creating invoices.
+**Issue 2**: "Call to a member function format() on null" when generating PDFs
+
+**Cause**: This was a date formatting error in v1.0.13 and earlier when `paid_at` was null.
+
+**Solution**: Upgrade to v1.0.14+ which includes proper date null checks:
+
+```php
+// Fixed in v1.0.14 - now safe with null paid_at dates
+$invoice = $user->findInvoice('txn_123');
+$response = $invoice->downloadPDF($brandingData); // Shows "N/A" for null dates
+```
+
+**Workaround for older versions**: Ensure all date fields are properly set when creating invoices.
 
 ### Invoice Timestamp Errors
 

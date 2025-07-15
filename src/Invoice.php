@@ -447,7 +447,7 @@ class Invoice
         if ($this->paid()) {
             $html .= '
             <div class="payment-info">
-                <p><strong>Paid on:</strong> ' . $this->paidAt()->format('M j, Y') . '</p>
+                <p><strong>Paid on:</strong> ' . ($this->paidAt() ? $this->paidAt()->format('M j, Y') : 'N/A') . '</p>
                 <p><strong>Amount Paid:</strong> ' . $this->amountPaid() . '</p>
             </div>';
         }
