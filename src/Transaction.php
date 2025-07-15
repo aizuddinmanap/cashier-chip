@@ -98,7 +98,7 @@ class Transaction extends Model
     }
 
     /**
-     * Determine if the transaction has failed.
+     * Determine if the transaction failed.
      */
     public function failed(): bool
     {
@@ -122,27 +122,11 @@ class Transaction extends Model
     }
 
     /**
-     * Get the Chip transaction ID.
-     */
-    public function chipId(): ?string
-    {
-        return $this->chip_id;
-    }
-
-    /**
-     * Get the transaction type (charge, refund, etc.).
-     */
-    public function type(): string
-    {
-        return $this->type ?? 'charge';
-    }
-
-    /**
      * Determine if this is a charge transaction.
      */
     public function isCharge(): bool
     {
-        return $this->type() === 'charge';
+        return $this->type === 'charge';
     }
 
     /**
@@ -150,7 +134,15 @@ class Transaction extends Model
      */
     public function isRefund(): bool
     {
-        return $this->type() === 'refund';
+        return $this->type === 'refund';
+    }
+
+    /**
+     * Get the Chip ID for the transaction.
+     */
+    public function chipId(): ?string
+    {
+        return $this->chip_id;
     }
 
     /**
@@ -162,7 +154,15 @@ class Transaction extends Model
     }
 
     /**
-     * Get transaction metadata.
+     * Get the transaction type.
+     */
+    public function type(): string
+    {
+        return $this->type;
+    }
+
+    /**
+     * Get the transaction metadata.
      */
     public function metadata(): array
     {
@@ -210,15 +210,7 @@ class Transaction extends Model
     }
 
     /**
-     * Scope to filter by transaction type.
-     */
-    public function scopeOfType($query, string $type)
-    {
-        return $query->where('type', $type);
-    }
-
-    /**
-     * Scope to filter charges.
+     * Scope to filter charge transactions.
      */
     public function scopeCharges($query)
     {
@@ -226,10 +218,134 @@ class Transaction extends Model
     }
 
     /**
-     * Scope to filter refunds.
+     * Scope to filter refund transactions.
      */
     public function scopeRefunds($query)
     {
         return $query->where('type', 'refund');
+    }
+
+    /**
+     * Scope to filter transactions by type.
+     */
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('type', $type);
+    }
+
+    /**
+     * Scope to filter transactions by payment method.
+     */
+    public function scopeByPaymentMethod($query, string $paymentMethod)
+    {
+        return $query->where('payment_method', $paymentMethod);
+    }
+
+    /**
+     * Scope to filter transactions by date range.
+     */
+    public function scopeForPeriod($query, \Carbon\Carbon $startDate, \Carbon\Carbon $endDate)
+    {
+        return $query->whereBetween('created_at', [$startDate, $endDate]);
+    }
+
+    /**
+     * Scope to filter transactions by minimum amount.
+     */
+    public function scopeMinAmount($query, int $amount)
+    {
+        return $query->where('total', '>=', $amount);
+    }
+
+    /**
+     * Scope to filter transactions by maximum amount.
+     */
+    public function scopeMaxAmount($query, int $amount)
+    {
+        return $query->where('total', '<=', $amount);
+    }
+
+    /**
+     * Scope to filter transactions by currency.
+     */
+    public function scopeByCurrency($query, string $currency)
+    {
+        return $query->where('currency', strtoupper($currency));
+    }
+
+    /**
+     * Get the original transaction for refunds.
+     */
+    public function originalTransaction(): ?Transaction
+    {
+        if (!$this->refunded_from) {
+            return null;
+        }
+
+        return static::find($this->refunded_from);
+    }
+
+    /**
+     * Get all refunds for this transaction.
+     */
+    public function refunds()
+    {
+        return $this->hasMany(static::class, 'refunded_from', 'id');
+    }
+
+    /**
+     * Get the total amount refunded for this transaction.
+     */
+    public function totalRefunded(): int
+    {
+        return $this->refunds()->sum('total');
+    }
+
+    /**
+     * Get the remaining refundable amount.
+     */
+    public function refundableAmount(): int
+    {
+        return $this->total - $this->totalRefunded();
+    }
+
+    /**
+     * Determine if the transaction can be refunded.
+     */
+    public function canBeRefunded(): bool
+    {
+        return $this->successful() && $this->refundableAmount() > 0;
+    }
+
+    /**
+     * Create a refund for this transaction.
+     */
+    public function refund(?int $amount = null): Transaction
+    {
+        if (!$this->canBeRefunded()) {
+            throw new \Exception('Transaction cannot be refunded');
+        }
+
+        $refundAmount = $amount ?? $this->refundableAmount();
+        
+        if ($refundAmount > $this->refundableAmount()) {
+            throw new \Exception('Refund amount exceeds refundable amount');
+        }
+
+        return static::create([
+            'id' => 'txn_' . uniqid(),
+            'chip_id' => 'refund_' . uniqid(),
+            'customer_id' => $this->customer_id,
+            'billable_type' => $this->billable_type,
+            'billable_id' => $this->billable_id,
+            'type' => 'refund',
+            'status' => 'success',
+            'currency' => $this->currency,
+            'total' => $refundAmount,
+            'payment_method' => $this->payment_method,
+            'description' => 'Refund for transaction ' . $this->id,
+            'refunded_from' => $this->id,
+            'processed_at' => now(),
+        ]);
     }
 } 

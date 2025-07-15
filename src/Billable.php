@@ -10,6 +10,7 @@ use Aizuddinmanap\CashierChip\Concerns\ManagesPaymentMethods;
 use Aizuddinmanap\CashierChip\Concerns\ManagesSubscriptions;
 use Aizuddinmanap\CashierChip\Concerns\ManagesTransactions;
 use Aizuddinmanap\CashierChip\Concerns\PerformsCharges;
+use Illuminate\Support\Collection;
 
 trait Billable
 {
@@ -227,9 +228,11 @@ trait Billable
      */
     public function invoice(array $options = []): Invoice
     {
-        // Implementation for creating invoices
-        // This would integrate with Chip's invoice API
-        throw new \Exception('Invoice creation not yet implemented');
+        // Create a pending invoice that can be processed later
+        $amount = $options['amount'] ?? 0;
+        $description = $options['description'] ?? 'Invoice';
+        
+        return $this->invoiceFor($description, $amount, $options);
     }
 
     /**
@@ -237,9 +240,21 @@ trait Billable
      */
     public function invoiceFor(string $description, int $amount, array $options = []): Invoice
     {
-        // Implementation for creating invoices for specific amounts
-        // This would integrate with Chip's invoice API
-        throw new \Exception('Invoice creation not yet implemented');
+        $transaction = $this->transactions()->create([
+            'id' => 'txn_' . uniqid(),
+            'chip_id' => $options['chip_id'] ?? 'invoice_' . uniqid(),
+            'type' => 'charge',
+            'status' => 'pending',
+            'currency' => $options['currency'] ?? 'MYR',
+            'total' => $amount,
+            'description' => $description,
+            'metadata' => json_encode($options['metadata'] ?? []),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Create and return invoice from transaction
+        return $this->convertTransactionToInvoice($transaction);
     }
 
     /**
@@ -247,8 +262,61 @@ trait Billable
      */
     public function upcomingInvoice(): ?Invoice
     {
-        // Implementation for retrieving upcoming invoices
-        // This would integrate with Chip's invoice API
+        // Get pending transactions as upcoming invoices
+        $pendingTransaction = $this->transactions()
+            ->where('type', 'charge')
+            ->where('status', 'pending')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if ($pendingTransaction) {
+            return $this->convertTransactionToInvoice($pendingTransaction);
+        }
+
+        // For subscriptions, calculate next billing cycle
+        $activeSubscription = $this->subscriptions()
+            ->where('chip_status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('ends_at')
+                      ->orWhere('ends_at', '>', now());
+            })
+            ->first();
+
+        if ($activeSubscription) {
+            // Generate upcoming subscription invoice
+            $amount = 2990; // Should be fetched from subscription pricing
+            
+            return new Invoice([
+                'id' => 'upcoming_' . uniqid(),
+                'chip_id' => 'upcoming_' . $activeSubscription->chip_id,
+                'customer_id' => $activeSubscription->customer_id,
+                'subscription_id' => $activeSubscription->id,
+                'amount_paid' => 0,
+                'amount_due' => $amount,
+                'currency' => 'MYR',
+                'status' => 'draft',
+                'date' => now()->addMonth(),
+                'due_date' => now()->addMonth(),
+                'paid_at' => null,
+                'description' => 'Upcoming subscription payment',
+                'metadata' => ['subscription_id' => $activeSubscription->id],
+                'lines' => [
+                    [
+                        'id' => 'line_' . uniqid(),
+                        'description' => 'Subscription: ' . $activeSubscription->name,
+                        'amount' => $amount,
+                        'currency' => 'MYR',
+                        'quantity' => 1,
+                    ]
+                ],
+                'total' => $amount,
+                'subtotal' => $amount,
+                'tax' => 0,
+                'billable' => $this,
+                'transaction' => null,
+            ]);
+        }
+
         return null;
     }
 
@@ -257,9 +325,16 @@ trait Billable
      */
     public function findInvoice(string $id): ?Invoice
     {
-        // Implementation for finding invoices by ID
-        // This would integrate with Chip's invoice API
-        return null;
+        $transaction = $this->transactions()
+            ->where('id', $id)
+            ->orWhere('chip_id', $id)
+            ->first();
+
+        if (!$transaction) {
+            return null;
+        }
+
+        return $this->convertTransactionToInvoice($transaction);
     }
 
     /**
@@ -269,11 +344,113 @@ trait Billable
     {
         $invoice = $this->findInvoice($id);
 
-        if (! $invoice) {
+        if (!$invoice) {
             throw new \Exception("Invoice {$id} not found");
         }
 
         return $invoice;
+    }
+
+    /**
+     * Download an invoice as a PDF.
+     */
+    public function downloadInvoice(string $invoiceId, array $data = []): \Symfony\Component\HttpFoundation\Response
+    {
+        $invoice = $this->findInvoiceOrFail($invoiceId);
+        
+        return $invoice->downloadPDF($data);
+    }
+
+    /**
+     * Get all invoices for the billable entity.
+     */
+    public function invoices(bool $includePending = false): Collection
+    {
+        $query = $this->transactions()
+            ->where('type', 'charge')
+            ->orderByDesc('created_at');
+
+        if (!$includePending) {
+            $query->where('status', 'success');
+        }
+
+        return $query->get()->map(function ($transaction) {
+            return $this->convertTransactionToInvoice($transaction);
+        });
+    }
+
+    /**
+     * Get invoices for a specific period.
+     */
+    public function invoicesForPeriod(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): Collection
+    {
+        return $this->transactions()
+            ->where('type', 'charge')
+            ->where('status', 'success')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($transaction) {
+                return $this->convertTransactionToInvoice($transaction);
+            });
+    }
+
+    /**
+     * Convert a transaction to an invoice for Laravel Cashier compatibility.
+     */
+    protected function convertTransactionToInvoice($transaction): Invoice
+    {
+        return new Invoice([
+            'id' => $transaction->id,
+            'chip_id' => $transaction->chip_id,
+            'customer_id' => $transaction->customer_id,
+            'subscription_id' => $transaction->subscription_id ?? null,
+            'amount_paid' => $transaction->status === 'success' ? $transaction->total : 0,
+            'amount_due' => $transaction->status === 'pending' ? $transaction->total : 0,
+            'currency' => $transaction->currency,
+            'status' => $this->mapTransactionStatusToInvoiceStatus($transaction->status),
+            'date' => $transaction->created_at,
+            'due_date' => $transaction->created_at->addDays(30),
+            'paid_at' => $transaction->processed_at,
+            'description' => $transaction->description,
+            'metadata' => $transaction->metadata ? json_decode($transaction->metadata, true) : [],
+            'lines' => $this->generateInvoiceLines($transaction),
+            'total' => $transaction->total,
+            'subtotal' => $transaction->total,
+            'tax' => 0,
+            'billable' => $this,
+            'transaction' => $transaction,
+        ]);
+    }
+
+    /**
+     * Map transaction status to invoice status.
+     */
+    protected function mapTransactionStatusToInvoiceStatus(string $transactionStatus): string
+    {
+        return match ($transactionStatus) {
+            'success' => 'paid',
+            'pending' => 'open',
+            'failed' => 'void',
+            'refunded' => 'void',
+            default => 'draft',
+        };
+    }
+
+    /**
+     * Generate invoice lines from transaction data.
+     */
+    protected function generateInvoiceLines($transaction): array
+    {
+        return [
+            [
+                'id' => 'line_' . uniqid(),
+                'description' => $transaction->description ?: 'Payment',
+                'amount' => $transaction->total,
+                'currency' => $transaction->currency,
+                'quantity' => 1,
+            ]
+        ];
     }
 
     /**
