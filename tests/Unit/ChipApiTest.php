@@ -8,6 +8,7 @@ use Aizuddinmanap\CashierChip\Exceptions\ChipApiException;
 use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\Test;
 
 class ChipApiTest extends TestCase
 {
@@ -19,7 +20,7 @@ class ChipApiTest extends TestCase
         $this->api = new ChipApi('test_brand', 'test_key', 'https://api.test.chip-in.asia/api/v1');
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_payment_methods(): void
     {
         $expectedResponse = [
@@ -36,7 +37,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_purchase(): void
     {
         $expectedResponse = [
@@ -73,7 +74,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals('https://checkout.chip-in.asia/123', $response['checkout_url']);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_purchase(): void
     {
         $expectedResponse = [
@@ -91,7 +92,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_refund_purchase(): void
     {
         $refundData = ['amount' => 5000];
@@ -110,7 +111,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_charge_purchase_with_token(): void
     {
         $chargeData = ['amount' => 10000];
@@ -129,7 +130,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_recurring_token(): void
     {
         $expectedResponse = ['success' => true];
@@ -143,7 +144,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_client(): void
     {
         $clientData = ['email' => 'test@example.com', 'full_name' => 'Test User'];
@@ -161,7 +162,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_search_clients_by_email(): void
     {
         $expectedResponse = [
@@ -182,7 +183,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_b2c_status(): void
     {
         $expectedResponse = ['status' => 'online', 'banks' => []];
@@ -196,7 +197,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_b2b1_status(): void
     {
         $expectedResponse = ['status' => 'online', 'banks' => []];
@@ -210,7 +211,7 @@ class ChipApiTest extends TestCase
         $this->assertEquals($expectedResponse, $result);
     }
 
-    /** @test */
+    #[Test]
     public function it_throws_exception_on_api_failure(): void
     {
         $this->expectException(\Aizuddinmanap\CashierChip\Exceptions\ChipApiException::class);
@@ -223,7 +224,7 @@ class ChipApiTest extends TestCase
         $api->getPaymentMethods();
     }
 
-    /** @test */
+    #[Test]
     public function it_includes_proper_headers(): void
     {
         Http::fake([
@@ -240,7 +241,7 @@ class ChipApiTest extends TestCase
         });
     }
 
-    /** @test */
+    #[Test]
     public function it_builds_urls_correctly(): void
     {
         Http::fake([
@@ -255,7 +256,7 @@ class ChipApiTest extends TestCase
         });
     }
 
-    /** @test */
+    #[Test]
     public function it_sanitizes_sensitive_data_in_logs(): void
     {
         // This would need log assertion helpers, but demonstrates the concept

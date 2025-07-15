@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Tests\Feature;
 
-use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
+use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
+use Aizuddinmanap\CashierChip\FPX;
+use Aizuddinmanap\CashierChip\Http\ChipApi;
+use PHPUnit\Framework\Attributes\Test;
 use Illuminate\Support\Facades\Http;
 
 class BillableTest extends TestCase
@@ -18,7 +21,7 @@ class BillableTest extends TestCase
         $this->user = $this->createUser();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_chip_customer(): void
     {
         Http::fake([
@@ -35,7 +38,7 @@ class BillableTest extends TestCase
         $this->assertEquals('client_123', $this->user->fresh()->chip_id);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_chip_customer(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -53,7 +56,7 @@ class BillableTest extends TestCase
         $this->assertEquals('Updated Name', $customer->name());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_check_if_user_has_chip_id(): void
     {
         $this->assertFalse($this->user->hasChipId());
@@ -64,7 +67,7 @@ class BillableTest extends TestCase
         $this->assertEquals('client_123', $this->user->chipId());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_subscription(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -84,7 +87,7 @@ class BillableTest extends TestCase
         $this->assertTrue($subscription->active());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_subscription_with_trial(): void
     {
         // Trial subscriptions are local-only and don't require API calls
@@ -98,7 +101,7 @@ class BillableTest extends TestCase
         $this->assertStringStartsWith('trial_', $subscription->chip_id);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_paid_subscription_without_trial(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -120,7 +123,7 @@ class BillableTest extends TestCase
         $this->assertEquals('sub_123', $subscription->chip_id);
     }
 
-    /** @test */
+    #[Test]
     public function it_differentiates_between_trial_and_paid_subscriptions(): void
     {
         // Create trial subscription (local-only)
@@ -151,7 +154,7 @@ class BillableTest extends TestCase
         $this->assertEquals('sub_paid_123', $paidSubscription->chip_id);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_check_subscription_status(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -169,7 +172,7 @@ class BillableTest extends TestCase
         $this->assertTrue($this->user->subscription('default')->active());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_perform_charges(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -189,7 +192,7 @@ class BillableTest extends TestCase
         $this->assertEquals('myr', $payment->currency);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_refund_payments(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -218,7 +221,7 @@ class BillableTest extends TestCase
         $this->assertEquals('refunded', $refund->status);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_charge_with_token(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -242,7 +245,7 @@ class BillableTest extends TestCase
         $this->assertTrue($metadata['charged_with_token'] ?? false);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_available_payment_methods(): void
     {
         Http::fake([
@@ -259,7 +262,7 @@ class BillableTest extends TestCase
         $this->assertEquals('fpx', $methods[1]['type']);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_banks(): void
     {
         Http::fake([
@@ -280,7 +283,7 @@ class BillableTest extends TestCase
         $this->assertEquals('Maybank2U', $banks['maybank2u']);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_check_fpx_support(): void
     {
         Http::fake([
@@ -292,7 +295,7 @@ class BillableTest extends TestCase
         $this->assertTrue($this->user->supportsFPX());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_banks_with_status(): void
     {
         Http::fake([
@@ -310,7 +313,7 @@ class BillableTest extends TestCase
         $this->assertTrue($maybankStatus['b2b1_available']);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_check_payment_method_availability(): void
     {
         Http::fake([
@@ -326,7 +329,7 @@ class BillableTest extends TestCase
         $this->assertFalse($this->user->isPaymentMethodAvailable('unknown'));
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_recurring_token(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
@@ -340,7 +343,7 @@ class BillableTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_find_chip_customer_by_email(): void
     {
         Http::fake([
@@ -359,7 +362,7 @@ class BillableTest extends TestCase
         $this->assertEquals('test@example.com', $customer['email']);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_trial_subscription(): void
     {
         // Set up a generic trial on the user
@@ -371,7 +374,7 @@ class BillableTest extends TestCase
         $this->assertFalse($this->user->onTrial('non-existent-subscription'));
     }
 
-    /** @test */
+    #[Test]
     public function it_can_manage_payment_method_info(): void
     {
         $this->user->update([

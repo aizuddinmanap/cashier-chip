@@ -8,10 +8,11 @@ use Aizuddinmanap\CashierChip\Checkout;
 use Aizuddinmanap\CashierChip\FPX;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\Test;
 
 class FPXTest extends TestCase
 {
-    /** @test */
+    #[Test]
     public function it_can_create_fpx_payment(): void
     {
         $checkout = FPX::createPayment(10000, 'MYR');
@@ -21,7 +22,7 @@ class FPXTest extends TestCase
         $this->assertEquals('MYR', $checkout->currency);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_supported_banks(): void
     {
         $banks = FPX::getSupportedBanks();
@@ -32,21 +33,21 @@ class FPXTest extends TestCase
         $this->assertEquals('Maybank2U', $banks['maybank2u']);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_check_if_bank_is_supported(): void
     {
         $this->assertTrue(FPX::isBankSupported('maybank2u'));
         $this->assertFalse(FPX::isBankSupported('non_existent_bank'));
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_bank_name(): void
     {
         $this->assertEquals('Maybank2U', FPX::getBankName('maybank2u'));
         $this->assertNull(FPX::getBankName('non_existent_bank'));
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_payment_with_specific_bank(): void
     {
         $checkout = FPX::payWithBank(10000, 'maybank2u', 'MYR');
@@ -55,7 +56,7 @@ class FPXTest extends TestCase
         $this->assertEquals('maybank2u', $checkout->fpxBank);
     }
 
-    /** @test */
+    #[Test]
     public function it_throws_exception_for_unsupported_bank(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -64,7 +65,7 @@ class FPXTest extends TestCase
         FPX::payWithBank(10000, 'unsupported_bank');
     }
 
-    /** @test */
+    #[Test]
     public function it_provides_payment_info(): void
     {
         $info = FPX::getPaymentInfo();
@@ -78,7 +79,7 @@ class FPXTest extends TestCase
         $this->assertArrayHasKey('fees', $info);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_payment_amounts(): void
     {
         $this->assertTrue(FPX::validateAmount(10000)); // RM 100
@@ -86,14 +87,14 @@ class FPXTest extends TestCase
         $this->assertFalse(FPX::validateAmount(5000000)); // Above maximum
     }
 
-    /** @test */
+    #[Test]
     public function it_formats_amounts_correctly(): void
     {
         $this->assertEquals(10000, FPX::formatAmount(100.00));
         $this->assertEquals(5050, FPX::formatAmount(50.50));
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_popular_banks(): void
     {
         $popularBanks = FPX::getPopularBanks();
@@ -104,7 +105,7 @@ class FPXTest extends TestCase
         $this->assertCount(6, $popularBanks);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_b2c_status(): void
     {
         Http::fake([
@@ -116,7 +117,7 @@ class FPXTest extends TestCase
         $this->assertEquals(['status' => 'online'], $status);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_fpx_b2c_status_failure(): void
     {
         Http::fake([
@@ -128,7 +129,7 @@ class FPXTest extends TestCase
         $this->assertEquals([], $status);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_fpx_b2b1_status(): void
     {
         Http::fake([
@@ -140,7 +141,7 @@ class FPXTest extends TestCase
         $this->assertEquals(['status' => 'online'], $status);
     }
 
-    /** @test */
+    #[Test]
     public function it_checks_b2c_availability(): void
     {
         Http::fake([
@@ -150,7 +151,7 @@ class FPXTest extends TestCase
         $this->assertTrue(FPX::isB2cAvailable());
     }
 
-    /** @test */
+    #[Test]
     public function it_defaults_to_available_when_status_unknown(): void
     {
         Http::fake([
@@ -160,7 +161,7 @@ class FPXTest extends TestCase
         $this->assertTrue(FPX::isB2cAvailable());
     }
 
-    /** @test */
+    #[Test]
     public function it_checks_b2b1_availability(): void
     {
         Http::fake([
@@ -170,7 +171,7 @@ class FPXTest extends TestCase
         $this->assertTrue(FPX::isB2b1Available());
     }
 
-    /** @test */
+    #[Test]
     public function it_provides_comprehensive_system_status(): void
     {
         Http::fake([
@@ -188,7 +189,7 @@ class FPXTest extends TestCase
         $this->assertTrue($systemStatus['b2b1']['available']);
     }
 
-    /** @test */
+    #[Test]
     public function it_provides_banks_with_status(): void
     {
         Http::fake([
@@ -209,7 +210,7 @@ class FPXTest extends TestCase
         $this->assertTrue($maybankStatus['recommended']); // Maybank is in popular banks
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_available_banks_from_api(): void
     {
         Http::fake([
@@ -231,7 +232,7 @@ class FPXTest extends TestCase
         $this->assertEquals('Maybank2U', $banks['maybank2u']);
     }
 
-    /** @test */
+    #[Test]
     public function it_falls_back_to_supported_banks_when_api_fails(): void
     {
         Http::fake([

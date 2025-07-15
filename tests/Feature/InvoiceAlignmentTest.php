@@ -9,6 +9,7 @@ use Aizuddinmanap\CashierChip\Transaction;
 use Aizuddinmanap\CashierChip\Invoice;
 use Illuminate\Support\Collection;
 use Carbon\Carbon;
+use PHPUnit\Framework\Attributes\Test;
 
 class InvoiceAlignmentTest extends TestCase
 {
@@ -24,7 +25,7 @@ class InvoiceAlignmentTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function transactions_can_be_converted_to_invoices()
     {
         // Create a successful transaction (this is your billing data)
@@ -55,7 +56,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertFalse($invoice->open());
     }
 
-    /** @test */
+    #[Test]
     public function can_find_specific_invoice()
     {
         // Create transaction
@@ -77,7 +78,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('Findable Service', $invoice->description());
     }
 
-    /** @test */
+    #[Test]
     public function can_get_latest_invoice()
     {
         // Create multiple transactions
@@ -111,7 +112,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('Latest Service', $latestInvoice->description());
     }
 
-    /** @test */
+    #[Test]
     public function can_create_invoice_for_specific_amount()
     {
         // Create invoice (Laravel Cashier compatible)
@@ -126,7 +127,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertFalse($invoice->paid());
     }
 
-    /** @test */
+    #[Test]
     public function can_get_upcoming_invoice()
     {
         // Create a pending transaction
@@ -149,7 +150,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('open', $upcomingInvoice->status());
     }
 
-    /** @test */
+    #[Test]
     public function can_filter_invoices_by_period()
     {
         // Create transactions in different periods
@@ -182,7 +183,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('txn_current_period', $monthlyInvoices->first()->id());
     }
 
-    /** @test */
+    #[Test]
     public function invoice_status_mapping_works_correctly()
     {
         $testCases = [
@@ -207,7 +208,7 @@ class InvoiceAlignmentTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function invoice_has_proper_line_items()
     {
         // Create transaction with description
@@ -234,7 +235,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals(1, $line['quantity']);
     }
 
-    /** @test */
+    #[Test]
     public function invoice_amounts_are_calculated_correctly()
     {
         // Create successful transaction
@@ -275,7 +276,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals('RM 50.00', $pendingInvoice->amountDue());
     }
 
-    /** @test */
+    #[Test]
     public function can_handle_multiple_transactions_as_invoices()
     {
         // Simulate your 18 transactions worth MYR 29.90 each
@@ -312,7 +313,7 @@ class InvoiceAlignmentTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function invoice_pdf_generation_works()
     {
         // Create transaction
@@ -340,7 +341,7 @@ class InvoiceAlignmentTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function invoice_conversion_preserves_transaction_data()
     {
         $transactionData = [
@@ -374,7 +375,7 @@ class InvoiceAlignmentTest extends TestCase
         $this->assertEquals($transaction->status, $invoiceTransaction->status);
     }
 
-    /** @test */
+    #[Test]
     public function laravel_cashier_api_compatibility()
     {
         // Create some test transactions

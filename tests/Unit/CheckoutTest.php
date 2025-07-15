@@ -6,11 +6,12 @@ namespace Aizuddinmanap\CashierChip\Tests\Unit;
 
 use Aizuddinmanap\CashierChip\Checkout;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
+use PHPUnit\Framework\Attributes\Test;
 use Illuminate\Support\Facades\Http;
 
 class CheckoutTest extends TestCase
 {
-    /** @test */
+    #[Test]
     public function customer_and_client_methods_are_mutually_exclusive(): void
     {
         $checkout = Checkout::forPayment(10000);
@@ -40,7 +41,7 @@ class CheckoutTest extends TestCase
         $this->assertArrayNotHasKey('customer_id', $data);
     }
     
-    /** @test */
+    #[Test]
     public function build_purchase_data_uses_customer_id_when_available(): void
     {
         Http::fake([
@@ -65,7 +66,7 @@ class CheckoutTest extends TestCase
         });
     }
     
-    /** @test */
+    #[Test]
     public function build_purchase_data_uses_client_details_when_no_customer_id(): void
     {
         Http::fake([

@@ -6,20 +6,23 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.10**
+## 🎉 **Stable Release: v1.0.11**
 
-**Production-ready with all major bugs fixed:**
+**Production-ready with all major bugs fixed and modern PHPUnit support:**
 
 - ✅ **All 70 Tests Passing** - Comprehensive test coverage with 255+ assertions
+- ✅ **PHPUnit 11 Compatible** - Modern test attributes, only 1 deprecation remaining (down from 71!)
+- ✅ **Database Compatibility** - Works with both old and new transaction table schemas
 - ✅ **Metadata System Fixed** - Resolved circular reference and array conversion issues  
 - ✅ **Invoice Generation Stable** - Transaction-to-invoice conversion working perfectly
 - ✅ **Currency Display Fixed** - Malaysian Ringgit properly displays as "RM 29.90"
 - ✅ **PDF Generation Working** - Optional dompdf integration with error handling
+- ✅ **Dynamic Pricing** - No more hardcoded amounts, uses actual subscription pricing
 - ✅ **Laravel Cashier Compatible** - 100% API compatibility verified
 
 ## ✨ Laravel Cashier Invoice Alignment
 
-**CashierChip v1.0.10 includes full Laravel Cashier compatibility:**
+**CashierChip v1.0.11+ includes full Laravel Cashier compatibility:**
 
 - ✅ **Perfect Laravel Cashier API** - Same methods as Stripe/Paddle Cashier
 - ✅ **Transaction-to-Invoice Bridge** - Your transactions work as invoices automatically  
@@ -787,7 +790,9 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 6. **🛡️ Zero Breaking Changes** - Existing code continues to work
 7. **📊 Powerful Queries** - Rich filtering and reporting capabilities
 8. **🎨 UI Ready** - Complete Blade templates and examples included
-9. **✅ Production Stable** - v1.0.10 with all 70 tests passing (255+ assertions)
+9. **✅ Production Stable** - v1.0.11 with all 70 tests passing (255+ assertions)
 10. **🔧 Battle-Tested** - Metadata, invoice conversion, and PDF generation all verified
+11. **🧪 Modern PHPUnit** - Compatible with PHPUnit 11, reduced deprecations by 98.6%
+12. **🗄️ Database Flexible** - Works with both old and new transaction table schemas
 
-**CashierChip v1.0.10 bridges the gap between transaction-based performance and Laravel Cashier's familiar invoice patterns - giving you the best of both worlds with production-grade stability!** 🚀
+**CashierChip v1.0.11 bridges the gap between transaction-based performance and Laravel Cashier's familiar invoice patterns - giving you the best of both worlds with production-grade stability and modern testing!** 🚀
