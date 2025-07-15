@@ -7,8 +7,6 @@ namespace Aizuddinmanap\CashierChip;
 use Carbon\Carbon;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
-use Dompdf\Dompdf;
-use Dompdf\Options;
 
 class Invoice
 {
@@ -312,14 +310,20 @@ class Invoice
     /**
      * Generate PDF content.
      */
-    protected function generatePDF(array $data = []): Dompdf
+    protected function generatePDF(array $data = []): object
     {
-        $options = new Options();
+        if (!class_exists(\Dompdf\Dompdf::class)) {
+            throw new \RuntimeException(
+                'PDF generation requires dompdf. Install it with: composer require dompdf/dompdf'
+            );
+        }
+
+        $options = new \Dompdf\Options();
         $options->set('defaultFont', 'Helvetica');
         $options->set('isHtml5ParserEnabled', true);
         $options->set('isPhpEnabled', true);
         
-        $dompdf = new Dompdf($options);
+        $dompdf = new \Dompdf\Dompdf($options);
         
         $html = $this->generateInvoiceHTML($data);
         $dompdf->loadHtml($html);

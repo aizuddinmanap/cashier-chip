@@ -1,9 +1,9 @@
 <?php
 
-namespace Tests\Feature;
+namespace Aizuddinmanap\CashierChip\Tests\Feature;
 
-use Tests\TestCase;
-use Tests\Fixtures\User;
+use Aizuddinmanap\CashierChip\Tests\TestCase;
+use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
 use Aizuddinmanap\CashierChip\Cashier;
 use Aizuddinmanap\CashierChip\Transaction;
 use Aizuddinmanap\CashierChip\Invoice;
@@ -328,9 +328,16 @@ class InvoiceAlignmentTest extends TestCase
 
         $invoice = $this->user->findInvoice('txn_pdf_123');
 
-        // Test PDF generation (this would normally create a PDF)
+        // Test PDF generation methods exist
         $this->assertTrue(method_exists($invoice, 'downloadPDF'));
         $this->assertTrue(method_exists($invoice, 'viewPDF'));
+
+        // Test that without dompdf, we get helpful error message
+        if (!class_exists(\Dompdf\Dompdf::class)) {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('PDF generation requires dompdf');
+            $invoice->downloadPDF();
+        }
     }
 
     /** @test */

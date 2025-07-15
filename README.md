@@ -33,14 +33,14 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 
 - **Laravel Cashier Compatibility**: 100% compatible API with Stripe/Paddle Cashier
 - **Transaction-Based Billing**: Fast, local storage of all payment data
-- **Invoice Generation**: Convert transactions to invoices with PDF export
+- **Invoice Generation**: Convert transactions to invoices with optional PDF export
 - **Subscription Management**: Create, modify, cancel, and resume subscriptions
 - **One-time Payments**: Process single charges with full transaction tracking
 - **Refund Processing**: Full and partial refunds with automatic transaction linking
 - **Customer Management**: Automatic customer creation and synchronization
 - **Webhook Handling**: Secure webhook processing with automatic verification
 - **FPX Support**: Malaysian bank transfers with real-time status checking
-- **Professional PDFs**: Customizable invoice templates with company branding
+- **Optional PDF Generation**: Customizable invoice templates with company branding (requires dompdf)
 
 ## 📦 Installation
 
@@ -62,6 +62,16 @@ php artisan migrate
 ```bash
 php artisan vendor:publish --tag="cashier-config"
 ```
+
+### Optional Dependencies
+
+For PDF invoice generation, install dompdf:
+
+```bash
+composer require dompdf/dompdf
+```
+
+CashierChip works with both dompdf 2.x and 3.x, so you can choose your preferred version.
 
 ## ⚙️ Configuration
 
@@ -167,6 +177,14 @@ $monthlyTotal = $user->invoiceTotalForPeriod($startDate, $endDate);
 ```
 
 ## 📄 PDF Invoice Generation
+
+**Note**: PDF generation requires an optional dependency. Install with:
+
+```bash
+composer require dompdf/dompdf
+```
+
+CashierChip supports both dompdf 2.x and 3.x versions, giving you flexibility in choosing your preferred version.
 
 ### Download & View Invoices
 
