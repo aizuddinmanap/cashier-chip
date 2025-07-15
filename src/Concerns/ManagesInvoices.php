@@ -18,9 +18,12 @@ trait ManagesInvoices
      */
     public function invoices(bool $includePending = false): Collection
     {
-        $query = $this->transactions()
-            ->where('type', 'charge')
-            ->orderByDesc('created_at');
+        $query = $this->transactions()->orderByDesc('created_at');
+
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
 
         if (!$includePending) {
             $query->where('status', 'success');
@@ -72,21 +75,20 @@ trait ManagesInvoices
     }
 
     /**
-     * Get the latest invoice for the billable entity.
+     * Get the customer's latest invoice.
      */
     public function latestInvoice(): ?Invoice
     {
-        $transaction = $this->transactions()
-            ->where('type', 'charge')
-            ->where('status', 'success')
-            ->orderByDesc('created_at')
-            ->first();
-
-        if (!$transaction) {
-            return null;
+        $query = $this->transactions()->orderByDesc('created_at');
+        
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
         }
+        
+        $transaction = $query->where('status', 'success')->first();
 
-        return $this->convertTransactionToInvoice($transaction);
+        return $transaction ? $this->convertTransactionToInvoice($transaction) : null;
     }
 
     /**
@@ -98,11 +100,14 @@ trait ManagesInvoices
     public function upcomingInvoice(): ?Invoice
     {
         // Get pending transactions as upcoming invoices
-        $pendingTransaction = $this->transactions()
-            ->where('type', 'charge')
-            ->where('status', 'pending')
-            ->orderByDesc('created_at')
-            ->first();
+        $query = $this->transactions()->orderByDesc('created_at');
+        
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+        
+        $pendingTransaction = $query->where('status', 'pending')->first();
 
         if ($pendingTransaction) {
             return $this->convertTransactionToInvoice($pendingTransaction);
@@ -157,19 +162,22 @@ trait ManagesInvoices
     }
 
     /**
-     * Get invoices for a specific date range.
+     * Get invoices for a specific period.
      */
     public function invoicesForPeriod(Carbon $startDate, Carbon $endDate): Collection
     {
-        return $this->transactions()
-            ->where('type', 'charge')
-            ->where('status', 'success')
+        $query = $this->transactions()
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(function (Transaction $transaction) {
-                return $this->convertTransactionToInvoice($transaction);
-            });
+            ->orderByDesc('created_at');
+            
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+
+        return $query->get()->map(function (Transaction $transaction) {
+            return $this->convertTransactionToInvoice($transaction);
+        });
     }
 
     /**
@@ -177,22 +185,38 @@ trait ManagesInvoices
      */
     public function invoicesForYear(int $year): Collection
     {
-        $startDate = Carbon::create($year, 1, 1);
-        $endDate = Carbon::create($year, 12, 31, 23, 59, 59);
+        $startDate = Carbon::createFromDate($year, 1, 1)->startOfYear();
+        $endDate = Carbon::createFromDate($year, 12, 31)->endOfYear();
 
-        return $this->invoicesForPeriod($startDate, $endDate);
+        $query = $this->transactions()
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->orderByDesc('created_at');
+            
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+
+        return $query->get()->map(function (Transaction $transaction) {
+            return $this->convertTransactionToInvoice($transaction);
+        });
     }
 
     /**
-     * Get total amount of invoices for a period.
+     * Calculate total invoice amount for a period.
      */
     public function invoiceTotalForPeriod(Carbon $startDate, Carbon $endDate): int
     {
-        return $this->transactions()
-            ->where('type', 'charge')
+        $query = $this->transactions()
             ->where('status', 'success')
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('total');
+            ->whereBetween('created_at', [$startDate, $endDate]);
+            
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+            
+        return $query->sum('total');
     }
 
     /**
@@ -291,5 +315,25 @@ trait ManagesInvoices
             'billable' => $this,
             'transaction' => null,
         ]);
+    }
+
+    /**
+     * Check if the transactions table has a 'type' column.
+     */
+    protected function hasTypeColumn(): bool
+    {
+        static $hasTypeColumn = null;
+        
+        if ($hasTypeColumn === null) {
+            try {
+                $schema = \Illuminate\Support\Facades\Schema::getConnection()->getSchemaBuilder();
+                $hasTypeColumn = $schema->hasColumn('transactions', 'type');
+            } catch (\Exception $e) {
+                // If we can't check the schema, assume the column doesn't exist for safety
+                $hasTypeColumn = false;
+            }
+        }
+        
+        return $hasTypeColumn;
     }
 } 

@@ -264,11 +264,14 @@ trait Billable
     public function upcomingInvoice(): ?Invoice
     {
         // Get pending transactions as upcoming invoices
-        $pendingTransaction = $this->transactions()
-            ->where('type', 'charge')
-            ->where('status', 'pending')
-            ->orderByDesc('created_at')
-            ->first();
+        $query = $this->transactions()->orderByDesc('created_at');
+        
+        // Only filter by type if the column exists (for backward compatibility)
+        if (method_exists($this, 'hasTypeColumn') && $this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+        
+        $pendingTransaction = $query->where('status', 'pending')->first();
 
         if ($pendingTransaction) {
             return $this->convertTransactionToInvoice($pendingTransaction);
@@ -380,15 +383,18 @@ trait Billable
      */
     public function invoices(bool $includePending = false): Collection
     {
-        $query = $this->transactions()
-            ->where('type', 'charge')
-            ->orderByDesc('created_at');
+        $query = $this->transactions()->orderByDesc('created_at');
+
+        // Only filter by type if the column exists (for backward compatibility)
+        if (method_exists($this, 'hasTypeColumn') && $this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
 
         if (!$includePending) {
             $query->where('status', 'success');
         }
 
-        return $query->get()->map(function ($transaction) {
+        return $query->get()->map(function (Transaction $transaction) {
             return $this->convertTransactionToInvoice($transaction);
         });
     }
@@ -398,15 +404,18 @@ trait Billable
      */
     public function invoicesForPeriod(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): Collection
     {
-        return $this->transactions()
-            ->where('type', 'charge')
-            ->where('status', 'success')
+        $query = $this->transactions()
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(function ($transaction) {
-                return $this->convertTransactionToInvoice($transaction);
-            });
+            ->orderByDesc('created_at');
+            
+        // Only filter by type if the column exists (for backward compatibility)
+        if (method_exists($this, 'hasTypeColumn') && $this->hasTypeColumn()) {
+            $query->where('type', 'charge');
+        }
+
+        return $query->get()->map(function (Transaction $transaction) {
+            return $this->convertTransactionToInvoice($transaction);
+        });
     }
 
     /**

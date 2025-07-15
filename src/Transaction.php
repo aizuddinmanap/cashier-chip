@@ -222,7 +222,33 @@ class Transaction extends Model
      */
     public function scopeCharges($query)
     {
-        return $query->where('type', 'charge');
+        // Only filter by type if the column exists (for backward compatibility)
+        if ($this->hasTypeColumnStatic()) {
+            return $query->where('type', 'charge');
+        }
+        
+        // If no type column, return all transactions (assuming they're charges for compatibility)
+        return $query;
+    }
+
+    /**
+     * Static method to check if the transactions table has a 'type' column.
+     */
+    protected static function hasTypeColumnStatic(): bool
+    {
+        static $hasTypeColumn = null;
+        
+        if ($hasTypeColumn === null) {
+            try {
+                $schema = \Illuminate\Support\Facades\Schema::getConnection()->getSchemaBuilder();
+                $hasTypeColumn = $schema->hasColumn('transactions', 'type');
+            } catch (\Exception $e) {
+                // If we can't check the schema, assume the column doesn't exist for safety
+                $hasTypeColumn = false;
+            }
+        }
+        
+        return $hasTypeColumn;
     }
 
     /**
