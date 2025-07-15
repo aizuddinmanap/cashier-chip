@@ -359,4 +359,39 @@ class Subscription extends Model
     {
         return ! empty($this->chip_id) && ! str_starts_with($this->chip_id, 'trial_');
     }
+
+    /**
+     * Get the price associated with the subscription.
+     */
+    public function price(): ?Price
+    {
+        return $this->chip_price_id ? Price::find($this->chip_price_id) : null;
+    }
+
+    /**
+     * Get the total amount for the subscription.
+     */
+    public function amount(): int
+    {
+        // If subscription has items, sum their amounts
+        if ($this->items()->exists()) {
+            return $this->items->sum(function ($item) {
+                $price = $item->price();
+                return $price ? $price->amount() : 0;
+            });
+        }
+
+        // Otherwise, use the subscription's own price
+        $price = $this->price();
+        return $price ? $price->amount() : 0;
+    }
+
+    /**
+     * Get the currency for the subscription.
+     */
+    public function currency(): string
+    {
+        $price = $this->price();
+        return $price ? $price->currency() : config('cashier.currency', 'MYR');
+    }
 } 

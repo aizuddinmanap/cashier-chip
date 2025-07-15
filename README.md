@@ -6,7 +6,7 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.9**
+## 🎉 **Stable Release: v1.0.10**
 
 **Production-ready with all major bugs fixed:**
 
@@ -19,7 +19,7 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 
 ## ✨ Laravel Cashier Invoice Alignment
 
-**CashierChip v1.0.9+ includes full Laravel Cashier compatibility:**
+**CashierChip v1.0.10 includes full Laravel Cashier compatibility:**
 
 - ✅ **Perfect Laravel Cashier API** - Same methods as Stripe/Paddle Cashier
 - ✅ **Transaction-to-Invoice Bridge** - Your transactions work as invoices automatically  

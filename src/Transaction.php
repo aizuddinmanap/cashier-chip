@@ -36,6 +36,7 @@ class Transaction extends Model
      */
     protected $casts = [
         'total' => 'integer',
+        'metadata' => 'array',
         'processed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -166,7 +167,14 @@ class Transaction extends Model
      */
     public function metadata(): array
     {
-        return $this->metadata ? json_decode($this->metadata, true) : [];
+        $metadata = $this->attributes['metadata'] ?? [];
+        
+        // Handle case where metadata might still be a JSON string
+        if (is_string($metadata)) {
+            return json_decode($metadata, true) ?: [];
+        }
+        
+        return is_array($metadata) ? $metadata : [];
     }
 
     /**

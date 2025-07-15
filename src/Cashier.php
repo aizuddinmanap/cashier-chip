@@ -111,7 +111,15 @@ class Cashier
             return call_user_func(static::$formatCurrencyUsing, $amount, $currency ?: static::usesCurrency());
         }
 
-        $money = new \Money\Money($amount, new Currency(strtoupper($currency ?: static::usesCurrency())));
+        $currency = strtoupper($currency ?: static::usesCurrency());
+        
+        // Handle MYR currency formatting to show as RM
+        if ($currency === 'MYR') {
+            $formatted = number_format($amount / 100, 2);
+            return "RM {$formatted}";
+        }
+
+        $money = new \Money\Money($amount, new Currency($currency));
         $numberFormatter = new \NumberFormatter(static::usesCurrencyLocale(), \NumberFormatter::CURRENCY);
 
         return $numberFormatter->formatCurrency($money->getAmount() / 100, $money->getCurrency()->getCode());

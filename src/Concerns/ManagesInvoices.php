@@ -139,6 +139,7 @@ trait ManagesInvoices
      */
     public function invoiceFor(string $description, int $amount, array $options = []): Invoice
     {
+        // Create transaction
         $transaction = $this->transactions()->create([
             'id' => 'txn_' . uniqid(),
             'chip_id' => $options['chip_id'] ?? 'invoice_' . uniqid(),
@@ -147,7 +148,7 @@ trait ManagesInvoices
             'currency' => $options['currency'] ?? 'MYR',
             'total' => $amount,
             'description' => $description,
-            'metadata' => json_encode($options['metadata'] ?? []),
+            'metadata' => $options['metadata'] ?? [],
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -257,9 +258,9 @@ trait ManagesInvoices
      */
     protected function generateUpcomingSubscriptionInvoice($subscription): Invoice
     {
-        // This would integrate with subscription pricing logic
-        // For now, create a basic upcoming invoice
-        $amount = 2990; // Default amount, should be fetched from subscription pricing
+        // Get the actual subscription amount instead of hardcoding
+        $amount = $subscription->amount() ?: 0; // Fallback to 0 if no pricing configured
+        $currency = $subscription->currency();
 
         return new Invoice([
             'id' => 'upcoming_' . uniqid(),
@@ -268,7 +269,7 @@ trait ManagesInvoices
             'subscription_id' => $subscription->id,
             'amount_paid' => 0,
             'amount_due' => $amount,
-            'currency' => 'MYR',
+            'currency' => $currency,
             'status' => 'draft',
             'date' => Carbon::now()->addMonth(),
             'due_date' => Carbon::now()->addMonth(),
@@ -280,7 +281,7 @@ trait ManagesInvoices
                     'id' => 'line_' . uniqid(),
                     'description' => 'Subscription: ' . $subscription->name,
                     'amount' => $amount,
-                    'currency' => 'MYR',
+                    'currency' => $currency,
                     'quantity' => 1,
                 ]
             ],

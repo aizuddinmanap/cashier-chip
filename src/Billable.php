@@ -240,15 +240,16 @@ trait Billable
      */
     public function invoiceFor(string $description, int $amount, array $options = []): Invoice
     {
+        // Create the transaction record
         $transaction = $this->transactions()->create([
             'id' => 'txn_' . uniqid(),
             'chip_id' => $options['chip_id'] ?? 'invoice_' . uniqid(),
             'type' => 'charge',
             'status' => 'pending',
-            'currency' => $options['currency'] ?? 'MYR',
+            'currency' => strtoupper($options['currency'] ?? config('cashier.currency', 'MYR')),
             'total' => $amount,
             'description' => $description,
-            'metadata' => json_encode($options['metadata'] ?? []),
+            'metadata' => $options['metadata'] ?? [],
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -283,9 +284,22 @@ trait Billable
             ->first();
 
         if ($activeSubscription) {
-            // Generate upcoming subscription invoice
-            $amount = 2990; // Should be fetched from subscription pricing
+            // Get the actual subscription amount instead of hardcoding
+            $amount = $activeSubscription->amount() ?: 0; // Fallback to 0 if no pricing configured
+            $currency = $activeSubscription->currency();
             
+            // Create subscription transaction
+            $transaction = $this->transactions()->create([
+                'id' => 'txn_' . uniqid(),
+                'chip_id' => 'upcoming_' . $activeSubscription->chip_id,
+                'type' => 'charge',
+                'status' => 'pending',
+                'currency' => strtoupper($currency),
+                'total' => $amount,
+                'description' => $options['description'] ?? 'Subscription Payment',
+                'metadata' => ['subscription_id' => $activeSubscription->id],
+            ]);
+
             return new Invoice([
                 'id' => 'upcoming_' . uniqid(),
                 'chip_id' => 'upcoming_' . $activeSubscription->chip_id,
@@ -413,7 +427,7 @@ trait Billable
             'due_date' => $transaction->created_at->addDays(30),
             'paid_at' => $transaction->processed_at,
             'description' => $transaction->description,
-            'metadata' => $transaction->metadata ? json_decode($transaction->metadata, true) : [],
+            'metadata' => $transaction->metadata ?? [],
             'lines' => $this->generateInvoiceLines($transaction),
             'total' => $transaction->total,
             'subtotal' => $transaction->total,
