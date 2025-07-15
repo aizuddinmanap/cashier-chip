@@ -393,8 +393,8 @@ class Invoice
 
             <div class="customer-info">
                 <h3>Bill To:</h3>
-                <p><strong>' . htmlspecialchars($customer ? $customer->name() : ($billable->name ?? 'Customer')) . '</strong></p>
-                <p>' . htmlspecialchars($customer ? $customer->email() : ($billable->email ?? '')) . '</p>
+                <p><strong>' . htmlspecialchars($customer ? $customer->name() : ($billable ? ($billable->name ?? 'Customer') : 'Customer')) . '</strong></p>
+                <p>' . htmlspecialchars($customer ? $customer->email() : ($billable ? ($billable->email ?? '') : '')) . '</p>
             </div>
 
             <div class="invoice-details">

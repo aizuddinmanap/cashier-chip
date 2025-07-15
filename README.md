@@ -6,13 +6,15 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.12**
+## 🎉 **Stable Release: v1.0.13**
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 71 Tests Passing** - Comprehensive test coverage with 266+ assertions
+- ✅ **All 71 Tests Passing** - Comprehensive test coverage with 266+ assertions  
+- ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
 - ✅ **Timestamp Fields Fixed** - Invoice objects now have proper `created_at` and `updated_at` fields
 - ✅ **Laravel View Compatibility** - No more null pointer errors in Blade templates
+- ✅ **Robust Error Handling** - Graceful fallbacks for missing customer/billable data
 - ✅ **PHPUnit 11 Compatible** - Modern test attributes, only 1 deprecation remaining (down from 71!)
 - ✅ **Database Compatibility** - Works with both old and new transaction table schemas
 - ✅ **Metadata System Fixed** - Resolved circular reference and array conversion issues  
@@ -798,5 +800,43 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 12. **🗄️ Database Flexible** - Works with both old and new transaction table schemas
 13. **⏰ Timestamp Perfect** - Full Laravel timestamp field compatibility for views
 14. **🛡️ Regression Protected** - Comprehensive test coverage prevents timestamp bugs
+
+## 🐛 Troubleshooting
+
+### PDF Generation Errors
+
+**Issue**: "Call to a member function on null" when generating PDFs
+
+**Cause**: This was a null pointer error in v1.0.12 and earlier when the billable entity was null.
+
+**Solution**: Upgrade to v1.0.13+ which includes proper null checks:
+
+```php
+// Fixed in v1.0.13 - now safe with null billable
+$invoice = $user->findInvoice('txn_123');
+$response = $invoice->downloadPDF($brandingData); // No longer crashes
+```
+
+**Workaround for older versions**: Ensure billable entity is properly set when creating invoices.
+
+### Invoice Timestamp Errors
+
+**Issue**: Null pointer errors accessing `$invoice->created_at` in Blade templates
+
+**Cause**: Fixed in v1.0.12 - invoice conversion wasn't setting Laravel timestamp fields.
+
+**Solution**: Upgrade to v1.0.12+ for proper timestamp field handling.
+
+### Missing PDF Dependencies
+
+**Issue**: "PDF generation requires dompdf" error
+
+**Solution**: Install the optional PDF dependency:
+
+```bash
+composer require dompdf/dompdf
+```
+
+PDF generation is optional - only install if you need invoice PDFs.
 
 **CashierChip v1.0.12 bridges the gap between transaction-based performance and Laravel Cashier's familiar invoice patterns - giving you the best of both worlds with production-grade stability, modern testing, and bulletproof timestamp handling!** 🚀
