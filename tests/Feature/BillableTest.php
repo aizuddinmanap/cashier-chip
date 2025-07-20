@@ -386,4 +386,24 @@ class BillableTest extends TestCase
         $this->assertEquals('card', $this->user->pmType());
         $this->assertEquals('4242', $this->user->pmLastFour());
     }
+
+    #[Test]
+    public function it_can_get_upcoming_invoice_for_trial_subscription(): void
+    {
+        // Create a trial subscription
+        $subscription = $this->user->newSubscription('premium', 'price_monthly')
+            ->trialDays(14)
+            ->create();
+
+        // Verify the subscription is created with 'trialing' status
+        $this->assertEquals('trialing', $subscription->chip_status);
+        $this->assertTrue($subscription->onTrial());
+
+        // Test that upcomingInvoice() recognizes the trial subscription
+        $upcomingInvoice = $this->user->upcomingInvoice();
+        $this->assertNotNull($upcomingInvoice, 'Trial subscription should generate upcoming invoice');
+        
+        // Verify the invoice contains trial subscription details
+        $this->assertEquals($subscription->name, $upcomingInvoice->subscription);
+    }
 } 

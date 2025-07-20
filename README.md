@@ -412,6 +412,43 @@ if ($user->subscription('default')->active()) {
 }
 ```
 
+### Subscription Status Types
+
+CashierChip follows Laravel Cashier standards for subscription status handling:
+
+```php
+// Subscription statuses (chip_status field)
+'active'    // Paid subscription with valid payment
+'trialing'  // Trial subscription (no payment required yet)
+'canceled'  // Subscription cancelled
+'expired'   // Subscription ended
+'past_due'  // Payment failed, awaiting retry
+```
+
+**Important:** Both `'active'` and `'trialing'` subscriptions are considered **valid** subscriptions for:
+- User access control (`$user->subscribed()` returns `true`)
+- Feature availability 
+- Billing operations (`upcomingInvoice()` works for both)
+- Business logic checks
+
+```php
+// All these work correctly for BOTH active and trial subscriptions:
+$user->subscribed('default');                    // ✅ true for both
+$user->subscription('default')->valid();         // ✅ true for both  
+$user->upcomingInvoice();                        // ✅ works for both
+$subscription->active();                         // ✅ true for both
+
+// Specific trial checks:
+$user->onTrial('default');                       // ✅ true only for trials
+$subscription->onTrial();                        // ✅ true only for trials
+$subscription->chip_status === 'trialing';       // ✅ trial status check
+```
+
+**Laravel Cashier Alignment:**
+This matches [Laravel Cashier Paddle](https://github.com/laravel/cashier-paddle/) behavior where `'trialing'` is treated as a valid subscription state alongside `'active'`.
+
+> **Note:** Trial status recognition in `upcomingInvoice()` and subscription queries was fixed in v1.0.17+ to properly support both `'active'` and `'trialing'` statuses.
+
 ### Managing Subscriptions
 
 ```php

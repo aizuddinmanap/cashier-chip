@@ -115,7 +115,7 @@ trait ManagesInvoices
 
         // For subscriptions, calculate next billing cycle
         $activeSubscription = $this->subscriptions()
-            ->where('chip_status', 'active')
+            ->whereIn('chip_status', ['active', 'trialing'])
             ->where(function ($query) {
                 $query->whereNull('ends_at')
                       ->orWhere('ends_at', '>', Carbon::now());
