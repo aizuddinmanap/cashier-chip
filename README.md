@@ -6,17 +6,18 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.14**
+## 🎉 **Stable Release: v1.0.15**
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
 - ✅ **All 72 Tests Passing** - Comprehensive test coverage with 273+ assertions  
+- ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
 - ✅ **Timestamp Fields Fixed** - Invoice objects now have proper `created_at` and `updated_at` fields
 - ✅ **Laravel View Compatibility** - No more null pointer errors in Blade templates
 - ✅ **Robust Error Handling** - Graceful fallbacks for missing customer/billable data
-- ✅ **PHPUnit 11 Compatible** - Modern test attributes, only 1 deprecation remaining (down from 71!)
+- ✅ **PHPUnit 11 Compatible** - Modern test attributes, zero deprecations (down from 71!)
 - ✅ **Database Compatibility** - Works with both old and new transaction table schemas
 - ✅ **Metadata System Fixed** - Resolved circular reference and array conversion issues  
 - ✅ **Invoice Generation Stable** - Transaction-to-invoice conversion working perfectly

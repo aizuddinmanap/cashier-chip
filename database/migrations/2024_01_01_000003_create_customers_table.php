@@ -22,8 +22,6 @@ return new class extends Migration
             $table->timestamp('trial_ends_at')->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
-
-            $table->index(['billable_type', 'billable_id']);
         });
     }
 
