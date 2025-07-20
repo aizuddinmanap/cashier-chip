@@ -66,9 +66,8 @@ class ChipServiceProvider extends ServiceProvider
      */
     protected function registerResources(): void
     {
-        if (Cashier::$runsMigrations) {
-            $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-        }
+        // Migrations are only available via publish, not auto-loaded
+        // Users must run: php artisan vendor:publish --tag="cashier-migrations"
     }
 
     /**

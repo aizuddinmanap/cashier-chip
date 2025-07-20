@@ -77,7 +77,7 @@ php artisan vendor:publish --tag="cashier-migrations"
 php artisan migrate
 ```
 
-> **Note:** The plans table migration is included but optional. You can skip it if you don't need local plan management and prefer to use Chip API directly for plan data.
+> **Note:** This includes an optional plans table migration (`2024_01_01_000005_create_plans_table.php`). If you don't want local plan management, simply delete this file before running `migrate`.
 
 ### Publish Configuration (Optional)
 
@@ -727,10 +727,11 @@ CashierChip v1.0.12+ includes an optional local plans table for better performan
 
 ### Setting Up Plans
 
-First, make sure you've published and run the migrations including the plans table:
+First, make sure you've published the migrations and kept the plans migration:
 
 ```bash
 php artisan vendor:publish --tag="cashier-migrations"
+# Keep the 2024_01_01_000005_create_plans_table.php file
 php artisan migrate
 ```
 
