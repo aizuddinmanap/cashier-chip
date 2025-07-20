@@ -6,6 +6,7 @@ namespace Aizuddinmanap\CashierChip;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Aizuddinmanap\CashierChip\Models\Plan;
 
 class SubscriptionBuilder
 {
@@ -23,6 +24,11 @@ class SubscriptionBuilder
      * The price ID.
      */
     protected string $priceId;
+
+    /**
+     * The plan instance.
+     */
+    protected ?Plan $plan = null;
 
     /**
      * The quantity of the subscription.
@@ -57,6 +63,9 @@ class SubscriptionBuilder
         $this->billable = $billable;
         $this->name = $name;
         $this->priceId = $priceId;
+        
+        // Try to load the plan if it exists locally
+        $this->plan = $this->findPlan($priceId);
     }
 
     /**
@@ -262,5 +271,40 @@ class SubscriptionBuilder
     public function getOptions(): array
     {
         return $this->options;
+    }
+
+    /**
+     * Get the plan instance.
+     */
+    public function getPlan(): ?Plan
+    {
+        return $this->plan;
+    }
+
+    /**
+     * Find a plan by price ID.
+     */
+    protected function findPlan(string $priceId): ?Plan
+    {
+        // First try to find by plan ID
+        $plan = Plan::find($priceId);
+        
+        // If not found, try to find by chip_price_id
+        if (!$plan) {
+            $plan = Plan::where('chip_price_id', $priceId)->first();
+        }
+        
+        return $plan;
+    }
+
+    /**
+     * Create a subscription builder for a plan.
+     */
+    public static function forPlan(Model $billable, string $name, Plan $plan): self
+    {
+        $builder = new static($billable, $name, $plan->chip_price_id);
+        $builder->plan = $plan;
+        
+        return $builder;
     }
 } 

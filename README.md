@@ -77,6 +77,8 @@ php artisan vendor:publish --tag="cashier-migrations"
 php artisan migrate
 ```
 
+> **Note:** The plans table migration is included but optional. You can skip it if you don't need local plan management and prefer to use Chip API directly for plan data.
+
 ### Publish Configuration (Optional)
 
 ```bash
@@ -674,6 +676,214 @@ $formatted = Cashier::formatAmount(2990, 'USD'); // "$29.90"
 Cashier::useCurrency('usd', 'en_US');
 ```
 
+## 💰 Plans Management
+
+CashierChip v1.0.12+ includes an optional local plans table for better performance and developer experience. This allows you to store plan details locally instead of making API calls to fetch plan information.
+
+### Benefits of Local Plans
+
+- **🚀 Performance**: No external API calls to display pricing pages
+- **💻 Better DX**: Rich local plan queries and relationships  
+- **🎨 Flexibility**: Custom features, descriptions, sorting, promotional pricing
+- **🔄 Reliability**: Works offline, no external dependencies for plan display
+- **📱 Modern Pattern**: Follows Paddle/Stripe Cashier conventions
+
+### Setting Up Plans
+
+First, make sure you've published and run the migrations including the plans table:
+
+```bash
+php artisan vendor:publish --tag="cashier-migrations"
+php artisan migrate
+```
+
+### Creating Plans
+
+```php
+use Aizuddinmanap\CashierChip\Models\Plan;
+
+// Create a plan
+Plan::create([
+    'id' => 'basic_monthly',
+    'chip_price_id' => 'price_abc123', // From Chip API
+    'name' => 'Basic Plan',
+    'description' => 'Perfect for individuals getting started',
+    'price' => 29.99,
+    'currency' => 'MYR',
+    'interval' => 'month',
+    'interval_count' => 1,
+    'features' => [
+        '10 Projects',
+        '100 MB Storage',
+        'Email Support'
+    ],
+    'active' => true,
+    'sort_order' => 1,
+]);
+
+// Create a yearly plan
+Plan::create([
+    'id' => 'pro_yearly',
+    'chip_price_id' => 'price_def456',
+    'name' => 'Pro Plan',
+    'description' => 'Best value for growing businesses',
+    'price' => 299.99,
+    'currency' => 'MYR',
+    'interval' => 'year',
+    'features' => [
+        'Unlimited Projects',
+        '10 GB Storage',
+        'Priority Support',
+        'Advanced Analytics'
+    ],
+    'sort_order' => 2,
+]);
+```
+
+### Using Plans in Your Application
+
+```php
+// Display pricing page
+$plans = Plan::active()->ordered()->get();
+
+foreach ($plans as $plan) {
+    echo $plan->name; // "Basic Plan"
+    echo $plan->display_price; // "RM 29.99"
+    echo $plan->formatted_interval; // "month"
+    
+    foreach ($plan->features_list as $feature) {
+        echo "✓ {$feature}";
+    }
+}
+```
+
+### Creating Subscriptions with Plans
+
+```php
+// Method 1: Using plan ID (recommended)
+$subscription = $user->newSubscription('default', 'basic_monthly')->create();
+
+// Method 2: Using Plan model directly
+$plan = Plan::find('pro_yearly');
+$subscription = SubscriptionBuilder::forPlan($user, 'default', $plan)->create();
+
+// Access plan from subscription
+$subscription = $user->subscription('default');
+$plan = $subscription->plan();
+echo $plan->name; // "Pro Plan"
+echo $plan->display_price; // "RM 299.99"
+```
+
+### Plan Query Methods
+
+```php
+// Get all active plans ordered by sort_order
+$plans = Plan::active()->ordered()->get();
+
+// Get plans by interval
+$monthlyPlans = Plan::active()->interval('month')->get();
+$yearlyPlans = Plan::active()->interval('year')->get();
+
+
+// Get plans by currency
+$myrPlans = Plan::byCurrency('MYR')->get();
+
+// Get cheapest/most expensive
+$cheapest = Plan::cheapest();
+$premium = Plan::mostExpensive();
+
+// Check plan features
+$plan = Plan::find('basic_monthly');
+if ($plan->hasFeature('Email Support')) {
+    // Plan includes email support
+}
+```
+
+### Plan Helper Methods
+
+```php
+$plan = Plan::find('pro_yearly');
+
+// Price formatting
+echo $plan->display_price; // "RM 299.99"
+echo $plan->price_per_month; // 24.99 (for comparison)
+
+// Interval formatting
+echo $plan->formatted_interval; // "year"
+
+// Boolean checks
+$plan->isActive(); // true
+$plan->isMonthly(); // false
+$plan->isYearly(); // true
+
+// Features
+$plan->features_list; // Array of features
+$plan->hasFeature('Advanced Analytics'); // true
+```
+
+### Building Pricing Pages
+
+```php
+// Controller
+public function pricing()
+{
+    $monthlyPlans = Plan::active()->interval('month')->ordered()->get();
+    $yearlyPlans = Plan::active()->interval('year')->ordered()->get();
+    
+    return view('pricing', compact('monthlyPlans', 'yearlyPlans'));
+}
+```
+
+```blade
+{{-- Blade template --}}
+<div class="pricing-grid">
+    @foreach($monthlyPlans as $plan)
+        <div class="pricing-card">
+            <h3>{{ $plan->name }}</h3>
+            <p class="description">{{ $plan->description }}</p>
+            <div class="price">{{ $plan->display_price }}</div>
+            <div class="interval">per {{ $plan->formatted_interval }}</div>
+            
+            <ul class="features">
+                @foreach($plan->features_list as $feature)
+                    <li>✓ {{ $feature }}</li>
+                @endforeach
+            </ul>
+            
+            <a href="{{ route('subscribe', $plan->id) }}" class="btn">
+                Choose {{ $plan->name }}
+            </a>
+        </div>
+    @endforeach
+</div>
+```
+
+### Relationship with Subscriptions
+
+```php
+// Get all subscriptions for a plan
+$plan = Plan::find('basic_monthly');
+$subscriptions = $plan->subscriptions;
+
+// Get plan from subscription
+$subscription = $user->subscription('default');
+$plan = $subscription->plan();
+
+if ($plan) {
+    echo "Subscribed to: {$plan->name}";
+    echo "Price: {$plan->display_price}/{$plan->formatted_interval}";
+}
+```
+
+### Migration Without Plans Table
+
+If you prefer not to use the local plans table, you can skip the plans migration and continue using price IDs directly:
+
+```php
+// Still works without plans table
+$subscription = $user->newSubscription('default', 'price_abc123')->create();
+```
+
 ## 🗄️ Database Schema
 
 CashierChip uses a well-structured database schema to track all payment and subscription data.
@@ -701,6 +911,31 @@ CREATE TABLE transactions (
 );
 ```
 
+### Plans Table (Optional - v1.0.12+)
+
+```sql
+CREATE TABLE plans (
+    id VARCHAR(255) PRIMARY KEY,                -- e.g., 'basic_monthly', 'pro_yearly'
+    chip_price_id VARCHAR(255) UNIQUE,          -- Chip's price ID from API
+    name VARCHAR(255),                          -- "Basic Plan", "Pro Plan"
+    description TEXT,                           -- Plan description
+    price DECIMAL(10,2),                        -- 29.99
+    currency VARCHAR(3) DEFAULT 'MYR',          -- MYR, USD, SGD
+    interval VARCHAR(255),                      -- month, year, week, day
+    interval_count INTEGER DEFAULT 1,           -- every X intervals
+    features JSON,                              -- ["Feature 1", "Feature 2"]
+    active BOOLEAN DEFAULT 1,                   -- is plan available
+    sort_order INTEGER DEFAULT 0,               -- display order
+    stripe_price_id VARCHAR(255),               -- future multi-gateway support
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    
+    INDEX idx_active_sort (active, sort_order),
+    INDEX idx_currency_active (currency, active),
+    INDEX idx_interval (interval)
+);
+```
+
 ### Migration Files Included
 
 ```bash
@@ -709,6 +944,7 @@ CREATE TABLE transactions (
 2024_01_01_000003_create_customers_table.php       # Customer data
 2024_01_01_000003_create_subscription_items_table.php # Subscription items
 2024_01_01_000004_create_transactions_table.php    # Transaction tracking (core)
+2024_01_01_000005_create_plans_table.php           # Plans management (optional)
 ```
 
 ## 🔍 Testing

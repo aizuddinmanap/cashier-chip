@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Aizuddinmanap\CashierChip\Models\Plan;
 
 class Subscription extends Model
 {
@@ -49,6 +50,26 @@ class Subscription extends Model
     public function items(): HasMany
     {
         return $this->hasMany(SubscriptionItem::class);
+    }
+
+    /**
+     * Get the plan for the subscription.
+     */
+    public function plan(): ?Plan
+    {
+        if (!$this->chip_price_id) {
+            return null;
+        }
+
+        // First try to find by plan ID
+        $plan = Plan::find($this->chip_price_id);
+        
+        // If not found, try to find by chip_price_id
+        if (!$plan) {
+            $plan = Plan::where('chip_price_id', $this->chip_price_id)->first();
+        }
+        
+        return $plan;
     }
 
     /**
