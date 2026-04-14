@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('chip_id')->nullable()->index();
             $table->timestamp('trial_ends_at')->nullable();
-            $table->json('pm_type')->nullable();
+            $table->string('pm_type')->nullable();
             $table->string('pm_last_four', 4)->nullable();
         });
     }

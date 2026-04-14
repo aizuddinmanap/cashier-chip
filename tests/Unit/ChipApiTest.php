@@ -29,7 +29,7 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/payment_methods' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/payment_methods*' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->getPaymentMethods();
@@ -142,6 +142,64 @@ class ChipApiTest extends TestCase
         $result = $this->api->deleteRecurringToken('purchase_123');
 
         $this->assertEquals($expectedResponse, $result);
+
+        // Chip's delete_recurring_token endpoint expects POST
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && str_contains($request->url(), '/delete_recurring_token/');
+        });
+    }
+
+    #[Test]
+    public function it_can_get_recurring_payment_methods(): void
+    {
+        $expectedResponse = [
+            'available_payment_methods' => ['visa', 'mastercard', 'maestro'],
+        ];
+
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/payment_methods*' => Http::response($expectedResponse),
+        ]);
+
+        $result = $this->api->getRecurringPaymentMethods('MYR');
+
+        $this->assertEquals($expectedResponse, $result);
+
+        // Verify recurring=true query param is sent
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'recurring=true')
+                && str_contains($request->url(), 'currency=MYR');
+        });
+    }
+
+    #[Test]
+    public function it_can_capture_purchase(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/capture/' => Http::response([
+                'id' => 'purchase_123',
+                'status' => 'paid',
+            ]),
+        ]);
+
+        $result = $this->api->capturePurchase('purchase_123');
+
+        $this->assertEquals('paid', $result['status']);
+    }
+
+    #[Test]
+    public function it_can_release_purchase(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/purchase_123/release/' => Http::response([
+                'id' => 'purchase_123',
+                'status' => 'released',
+            ]),
+        ]);
+
+        $result = $this->api->releasePurchase('purchase_123');
+
+        $this->assertEquals('released', $result['status']);
     }
 
     #[Test]
@@ -217,7 +275,7 @@ class ChipApiTest extends TestCase
         $this->expectException(\Aizuddinmanap\CashierChip\Exceptions\ChipApiException::class);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/payment_methods' => Http::response(['error' => 'API Error'], 400),
+            'api.test.chip-in.asia/api/v1/payment_methods*' => Http::response(['error' => 'API Error'], 400),
         ]);
 
         $api = new ChipApi();

@@ -104,6 +104,10 @@ class WebhookCommand extends Command
             $defaultEvents = [
                 'purchase.completed',
                 'purchase.failed',
+                'purchase.refunded',
+                'purchase.preauthorized',
+                'purchase.hold',
+                'purchase.pending_charge',
                 'subscription.created',
                 'subscription.updated',
                 'subscription.cancelled',

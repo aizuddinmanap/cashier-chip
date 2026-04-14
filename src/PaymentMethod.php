@@ -4,83 +4,167 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
-class PaymentMethod
+use Aizuddinmanap\CashierChip\Http\ChipApi;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Contracts\Support\Jsonable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+
+class PaymentMethod extends Model implements Arrayable, Jsonable
 {
-    /**
-     * The payment method attributes.
-     */
-    protected array $attributes = [];
+    protected $guarded = [];
+
+    protected $casts = [
+        'is_default' => 'boolean',
+        'metadata' => 'array',
+    ];
 
     /**
-     * Create a new payment method instance.
+     * Get the billable entity that owns the payment method.
      */
-    public function __construct(array $attributes = [])
+    public function billable(): MorphTo
     {
-        $this->attributes = $attributes;
+        return $this->morphTo();
     }
 
     /**
-     * Get an attribute from the payment method.
+     * Get the Chip token ID (purchase ID used as recurring token).
      */
-    public function __get(string $key)
+    public function token(): string
     {
-        return $this->attributes[$key] ?? null;
+        return $this->chip_token_id;
     }
 
     /**
-     * Get the payment method's ID.
-     */
-    public function id(): ?string
-    {
-        return $this->id ?? $this->chip_id;
-    }
-
-    /**
-     * Get the payment method's type.
-     */
-    public function type(): string
-    {
-        return $this->attributes['type'] ?? 'card';
-    }
-
-    /**
-     * Get the last four digits of the payment method.
-     */
-    public function lastFour(): ?string
-    {
-        return $this->attributes['last_four'] ?? null;
-    }
-
-    /**
-     * Get the brand of the payment method.
+     * Get the card brand (visa, mastercard, maestro).
      */
     public function brand(): ?string
     {
-        return $this->attributes['brand'] ?? null;
+        return $this->card_brand;
     }
 
     /**
-     * Determine if the payment method is the default.
+     * Get the last four digits of the card.
+     */
+    public function lastFour(): ?string
+    {
+        return $this->card_last_four;
+    }
+
+    /**
+     * Get the card expiry month.
+     */
+    public function expiryMonth(): ?string
+    {
+        return $this->card_expiry_month;
+    }
+
+    /**
+     * Get the card expiry year.
+     */
+    public function expiryYear(): ?string
+    {
+        return $this->card_expiry_year;
+    }
+
+    /**
+     * Get the cardholder name.
+     */
+    public function cardholderName(): ?string
+    {
+        return $this->cardholder_name;
+    }
+
+    /**
+     * Get the card type (debit, credit).
+     */
+    public function cardType(): ?string
+    {
+        return $this->card_type;
+    }
+
+    /**
+     * Determine if this is the default payment method.
      */
     public function isDefault(): bool
     {
-        return $this->attributes['is_default'] ?? false;
+        return $this->is_default;
     }
 
     /**
-     * Delete the payment method.
+     * Determine if the card is expired.
      */
-    public function delete(): bool
+    public function isExpired(): bool
     {
-        // TODO: Implement payment method deletion via Chip API
-        return true;
+        if (! $this->card_expiry_year || ! $this->card_expiry_month) {
+            return false;
+        }
+
+        $expiry = \Carbon\Carbon::createFromDate(
+            (int) $this->card_expiry_year,
+            (int) $this->card_expiry_month,
+            1
+        )->endOfMonth();
+
+        return $expiry->isPast();
     }
 
     /**
-     * Convert the payment method to an array.
+     * Delete the payment method locally and from Chip API.
      */
-    public function toArray(): array
+    public function deletePaymentMethod(): bool
     {
-        return $this->attributes;
+        try {
+            $api = new ChipApi();
+            $api->deleteRecurringToken($this->chip_token_id);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning(
+                'Failed to delete recurring token from Chip API: ' . $e->getMessage()
+            );
+        }
+
+        return $this->delete();
     }
-} 
+
+    /**
+     * Create a PaymentMethod from a Chip payment response.
+     */
+    public static function fromChipPayment(array $payment, Model $billable): ?self
+    {
+        $tokenId = $payment['id'];
+
+        if (! ($payment['is_recurring_token'] ?? false)) {
+            $tokenId = $payment['recurring_token'] ?? $payment['id'];
+        }
+
+        $existing = static::where('chip_token_id', $tokenId)->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $extra = $payment['transaction_data']['extra'] ?? [];
+
+        return static::create([
+            'billable_type' => $billable->getMorphClass(),
+            'billable_id' => $billable->getKey(),
+            'chip_token_id' => $tokenId,
+            'card_brand' => $extra['card_brand'] ?? null,
+            'card_last_four' => isset($extra['masked_pan']) ? substr($extra['masked_pan'], -4) : null,
+            'card_expiry_month' => $extra['expiry_month'] ?? null,
+            'card_expiry_year' => isset($extra['expiry_year']) ? '20' . $extra['expiry_year'] : null,
+            'cardholder_name' => $extra['cardholder_name'] ?? null,
+            'card_issuer_country' => $extra['card_issuer_country'] ?? null,
+            'masked_pan' => $extra['masked_pan'] ?? null,
+            'card_type' => $extra['card_type'] ?? null,
+            'is_default' => false,
+        ]);
+    }
+
+    /**
+     * Convert the payment method to JSON.
+     */
+    public function toJson($options = 0): string
+    {
+        return json_encode($this->toArray(), $options);
+    }
+}

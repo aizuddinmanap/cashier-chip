@@ -308,6 +308,7 @@ trait Billable
                 'chip_id' => 'upcoming_' . $activeSubscription->chip_id,
                 'customer_id' => $activeSubscription->customer_id,
                 'subscription_id' => $activeSubscription->id,
+                'subscription' => $activeSubscription->name,
                 'amount_paid' => 0,
                 'amount_due' => $amount,
                 'currency' => 'MYR',

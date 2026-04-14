@@ -185,9 +185,42 @@ class ChipApi
     /**
      * Get payment methods available for the account.
      */
-    public function getPaymentMethods(): array
+    public function getPaymentMethods(string $currency = 'MYR', ?string $language = null, ?int $amount = null): array
     {
-        return $this->get('payment_methods');
+        $query = [
+            'brand_id' => $this->brandId,
+            'currency' => $currency,
+        ];
+
+        if ($language) {
+            $query['language'] = $language;
+        }
+
+        if ($amount !== null) {
+            $query['amount'] = $amount;
+        }
+
+        return $this->get('payment_methods/', $query);
+    }
+
+    /**
+     * Get recurring-capable payment methods from Chip API.
+     * Sends recurring=true query flag to filter to tokenizable methods.
+     */
+    public function getRecurringPaymentMethods(string $currency = 'MYR', ?string $language = null, int $amount = 200): array
+    {
+        $query = [
+            'brand_id' => $this->brandId,
+            'currency' => $currency,
+            'amount' => $amount,
+            'recurring' => 'true',
+        ];
+
+        if ($language) {
+            $query['language'] = $language;
+        }
+
+        return $this->get('payment_methods/', $query);
     }
 
     /**
@@ -288,7 +321,7 @@ class ChipApi
     }
 
     /**
-     * Charge a purchase using a token via Chip API.
+     * Charge a purchase using a recurring token via Chip API.
      */
     public function chargePurchase(string $purchaseId, array $data = []): array
     {
@@ -296,11 +329,27 @@ class ChipApi
     }
 
     /**
+     * Capture a preauthorized purchase via Chip API.
+     */
+    public function capturePurchase(string $purchaseId, array $data = []): array
+    {
+        return $this->post("purchases/{$purchaseId}/capture/", $data);
+    }
+
+    /**
+     * Release a preauthorized purchase via Chip API.
+     */
+    public function releasePurchase(string $purchaseId): array
+    {
+        return $this->post("purchases/{$purchaseId}/release/");
+    }
+
+    /**
      * Delete a recurring token for a purchase via Chip API.
      */
     public function deleteRecurringToken(string $purchaseId): array
     {
-        return $this->delete("purchases/{$purchaseId}/delete_recurring_token/");
+        return $this->post("purchases/{$purchaseId}/delete_recurring_token/");
     }
 
     /**
@@ -348,7 +397,7 @@ class ChipApi
      */
     public function getFpxB2cStatus(): array
     {
-        // Use the specific FPX endpoint mentioned in WooCommerce plugin
+        // FPX status endpoints live at the API root, not under /api/v1
         $fpxBaseUrl = str_replace('/api/v1', '', $this->baseUrl);
         $response = Http::withHeaders($this->getHeaders())
             ->timeout(30)
@@ -369,7 +418,7 @@ class ChipApi
      */
     public function getFpxB2b1Status(): array
     {
-        // Use the specific FPX endpoint mentioned in WooCommerce plugin
+        // FPX status endpoints live at the API root, not under /api/v1
         $fpxBaseUrl = str_replace('/api/v1', '', $this->baseUrl);
         $response = Http::withHeaders($this->getHeaders())
             ->timeout(30)

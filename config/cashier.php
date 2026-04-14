@@ -181,6 +181,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Recurring Payment Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for recurring/tokenized payments via Chip's
+    | recurring_token mechanism.
+    |
+    | payment_methods: Card brands that support tokenization for recurring.
+    |   Only visa, mastercard, maestro can be tokenized by Chip.
+    |
+    | creator_agent: Identifies this package in Chip API requests.
+    |
+    | platform: Platform identifier sent with purchase requests.
+    |
+    */
+
+    'recurring' => [
+        'payment_methods' => ['visa', 'mastercard', 'maestro'],
+        'creator_agent' => env('CHIP_CREATOR_AGENT', 'Laravel-Cashier-Chip'),
+        'platform' => env('CHIP_PLATFORM', 'api'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Invoice Configuration
     |--------------------------------------------------------------------------
     |

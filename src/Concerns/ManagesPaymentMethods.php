@@ -4,67 +4,190 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Concerns;
 
+use Aizuddinmanap\CashierChip\Cashier;
+use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Aizuddinmanap\CashierChip\PaymentMethod;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 trait ManagesPaymentMethods
 {
     /**
      * Get all payment methods for the billable entity.
+     * Aligned with Laravel Cashier Stripe: paymentMethods().
      */
-    public function paymentMethods(): Collection
+    public function paymentMethods(): MorphMany
     {
-        // TODO: Implement payment methods retrieval from Chip API
-        return collect();
+        return $this->morphMany(PaymentMethod::class, 'billable')->orderByDesc('created_at');
     }
 
     /**
-     * Add a payment method to the billable entity.
+     * Get all non-expired payment methods.
      */
-    public function addPaymentMethod(string $paymentMethodId): PaymentMethod
+    public function validPaymentMethods(): Collection
     {
-        // TODO: Implement payment method addition via Chip API
-        return new PaymentMethod([
-            'id' => $paymentMethodId,
-            'customer_id' => $this->chipId(),
-        ]);
+        return $this->paymentMethods()->get()->reject(fn (PaymentMethod $pm) => $pm->isExpired());
     }
 
     /**
-     * Remove a payment method from the billable entity.
+     * Add a payment method via zero-amount tokenization (RM0 preauthorization).
+     * Equivalent to Laravel Cashier Stripe's createSetupIntent() flow.
+     *
+     * Returns the Chip checkout URL for the customer to complete card tokenization.
      */
-    public function removePaymentMethod(string $paymentMethodId): bool
+    public function addPaymentMethodIntent(array $options = []): array
     {
-        // TODO: Implement payment method removal via Chip API
+        $api = new ChipApi();
+
+        $recurringMethods = config('cashier.recurring.payment_methods', ['visa', 'mastercard', 'maestro']);
+
+        $params = [
+            'payment_method_whitelist' => $recurringMethods,
+            'creator_agent' => config('cashier.recurring.creator_agent', 'Laravel-Cashier-Chip/' . Cashier::$version),
+            'platform' => config('cashier.recurring.platform', 'api'),
+            'force_recurring' => true,
+            'skip_capture' => true,
+            'brand_id' => config('cashier.chip.brand_id'),
+            'client' => [
+                'email' => $this->email ?? $options['email'] ?? null,
+                'full_name' => $this->name ?? $options['full_name'] ?? null,
+            ],
+            'purchase' => [
+                'currency' => strtoupper($options['currency'] ?? config('cashier.currency', 'MYR')),
+                'products' => [
+                    [
+                        'name' => 'Add payment method',
+                        'price' => 0,
+                    ],
+                ],
+            ],
+        ];
+
+        if (isset($options['success_redirect'])) {
+            $params['success_redirect'] = $options['success_redirect'];
+        }
+
+        if (isset($options['failure_redirect'])) {
+            $params['failure_redirect'] = $options['failure_redirect'];
+        }
+
+        if (isset($options['success_callback'])) {
+            $params['success_callback'] = $options['success_callback'];
+        }
+
+        $payment = $api->createPurchase($params);
+
+        return [
+            'id' => $payment['id'],
+            'checkout_url' => $payment['checkout_url'] ?? null,
+            'direct_post_url' => $payment['direct_post_url'] ?? null,
+        ];
+    }
+
+    /**
+     * Store a recurring token from a Chip payment response.
+     */
+    public function storePaymentMethodFromChip(array $payment): ?PaymentMethod
+    {
+        if (! ($payment['is_recurring_token'] ?? false) && empty($payment['recurring_token'])) {
+            return null;
+        }
+
+        $paymentMethod = PaymentMethod::fromChipPayment($payment, $this);
+
+        if ($paymentMethod) {
+            $this->updateDefaultPaymentMethodFromModel($paymentMethod);
+        }
+
+        return $paymentMethod;
+    }
+
+    /**
+     * Remove a payment method by its ID.
+     * Aligned with Laravel Cashier Stripe: deletePaymentMethod().
+     */
+    public function removePaymentMethod($paymentMethodId): bool
+    {
+        $paymentMethod = $this->paymentMethods()
+            ->where('id', $paymentMethodId)
+            ->orWhere('chip_token_id', $paymentMethodId)
+            ->first();
+
+        if (! $paymentMethod) {
+            return false;
+        }
+
+        $wasDefault = $paymentMethod->isDefault();
+
+        $paymentMethod->deletePaymentMethod();
+
+        if ($wasDefault) {
+            $this->clearDefaultPaymentMethod();
+        }
+
         return true;
     }
 
     /**
      * Get the default payment method for the billable entity.
+     * Aligned with Laravel Cashier Stripe: defaultPaymentMethod().
      */
     public function defaultPaymentMethod(): ?PaymentMethod
     {
-        // TODO: Implement default payment method retrieval from Chip API
-        return null;
+        return $this->paymentMethods()->where('is_default', true)->first();
     }
 
     /**
-     * Set the default payment method for the billable entity.
+     * Update the default payment method.
+     * Aligned with Laravel Cashier Stripe: updateDefaultPaymentMethod().
      */
-    public function updateDefaultPaymentMethod(string $paymentMethodId): PaymentMethod
+    public function updateDefaultPaymentMethod($paymentMethodId): ?PaymentMethod
     {
-        // TODO: Implement default payment method update via Chip API
-        
-        // Update local payment method information
-        $this->fill([
-            'pm_type' => 'card', // This would come from Chip API
-            'pm_last_four' => '1234', // This would come from Chip API
+        $paymentMethod = $this->paymentMethods()
+            ->where('id', $paymentMethodId)
+            ->orWhere('chip_token_id', $paymentMethodId)
+            ->first();
+
+        if (! $paymentMethod) {
+            return null;
+        }
+
+        return $this->updateDefaultPaymentMethodFromModel($paymentMethod);
+    }
+
+    /**
+     * Set a PaymentMethod model as the default and update user columns.
+     */
+    protected function updateDefaultPaymentMethodFromModel(PaymentMethod $paymentMethod): PaymentMethod
+    {
+        $this->paymentMethods()->update(['is_default' => false]);
+
+        $paymentMethod->update(['is_default' => true]);
+
+        $this->forceFill([
+            'pm_type' => $paymentMethod->card_brand,
+            'pm_last_four' => $paymentMethod->card_last_four,
         ])->save();
 
-        return new PaymentMethod([
-            'id' => $paymentMethodId,
-            'customer_id' => $this->chipId(),
-        ]);
+        return $paymentMethod;
+    }
+
+    /**
+     * Clear the default payment method columns.
+     */
+    protected function clearDefaultPaymentMethod(): void
+    {
+        $next = $this->paymentMethods()->latest()->first();
+
+        if ($next) {
+            $this->updateDefaultPaymentMethodFromModel($next);
+        } else {
+            $this->forceFill([
+                'pm_type' => null,
+                'pm_last_four' => null,
+            ])->save();
+        }
     }
 
     /**
@@ -94,40 +217,26 @@ trait ManagesPaymentMethods
     /**
      * Get the available payment methods for the customer from Chip API.
      */
-    public function getAvailablePaymentMethods(): array
+    public function getAvailablePaymentMethods(string $currency = 'MYR'): array
     {
-        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-        
         try {
-            return $api->getPaymentMethods();
+            $api = new ChipApi();
+            return $api->getPaymentMethods($currency);
         } catch (\Exception $e) {
-            // Fallback to default payment methods if API fails
-            return [
-                [
-                    'id' => 'pm_card',
-                    'type' => 'card',
-                    'name' => 'Credit/Debit Card',
-                    'description' => 'Pay with Visa, Mastercard',
-                ],
-                [
-                    'id' => 'pm_fpx',
-                    'type' => 'fpx',
-                    'name' => 'FPX Online Banking',
-                    'description' => 'Pay with Malaysian online banking',
-                ],
-                [
-                    'id' => 'pm_ewallet',
-                    'type' => 'ewallet',
-                    'name' => 'E-Wallets',
-                    'description' => 'Touch n Go, GrabPay, ShopeePay, etc.',
-                ],
-                [
-                    'id' => 'pm_duitnow_qr',
-                    'type' => 'duitnow_qr',
-                    'name' => 'DuitNow QR',
-                    'description' => 'Scan QR code to pay',
-                ],
-            ];
+            return [];
+        }
+    }
+
+    /**
+     * Get recurring-capable payment methods from Chip API.
+     */
+    public function getRecurringPaymentMethods(string $currency = 'MYR'): array
+    {
+        try {
+            $api = new ChipApi();
+            return $api->getRecurringPaymentMethods($currency);
+        } catch (\Exception $e) {
+            return [];
         }
     }
 
@@ -136,23 +245,18 @@ trait ManagesPaymentMethods
      */
     public function getFPXBanks(): array
     {
-        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-        
         try {
+            $api = new ChipApi();
             $paymentMethods = $api->getPaymentMethods();
-            
-            // Extract FPX banks from payment methods response
+
             foreach ($paymentMethods as $method) {
                 if (($method['type'] ?? null) === 'fpx' && isset($method['banks'])) {
                     return $method['banks'];
                 }
             }
-            
-            // Fallback to static list if not found in API response
+
             return \Aizuddinmanap\CashierChip\Checkout::getSupportedFPXBanks();
-            
         } catch (\Exception $e) {
-            // Fallback to static list if API fails
             return \Aizuddinmanap\CashierChip\Checkout::getSupportedFPXBanks();
         }
     }
@@ -163,27 +267,27 @@ trait ManagesPaymentMethods
     public function supportsFPX(): bool
     {
         $paymentMethods = $this->getAvailablePaymentMethods();
-        
+
         foreach ($paymentMethods as $method) {
             if (($method['type'] ?? null) === 'fpx') {
                 return true;
             }
         }
-        
+
         return false;
     }
 
     /**
-     * Delete a recurring payment token for a specific purchase.
+     * Delete a recurring payment token from Chip API.
      */
     public function deleteRecurringToken(string $purchaseId): bool
     {
-        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-        
         try {
+            $api = new ChipApi();
             $api->deleteRecurringToken($purchaseId);
             return true;
         } catch (\Exception $e) {
+            Log::warning('Failed to delete recurring token: ' . $e->getMessage());
             return false;
         }
     }
@@ -193,16 +297,14 @@ trait ManagesPaymentMethods
      */
     public static function findChipCustomerByEmail(string $email): ?array
     {
-        $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-        
         try {
+            $api = new ChipApi();
             $results = $api->searchClientsByEmail($email);
-            
-            // Return first match if found
-            if (!empty($results) && is_array($results)) {
+
+            if (! empty($results) && is_array($results)) {
                 return $results[0] ?? null;
             }
-            
+
             return null;
         } catch (\Exception $e) {
             return null;
@@ -226,45 +328,22 @@ trait ManagesPaymentMethods
     }
 
     /**
-     * Get comprehensive payment method information with live status.
-     */
-    public function getPaymentMethodsWithStatus(): array
-    {
-        $methods = $this->getAvailablePaymentMethods();
-        $fpxStatus = $this->getFPXSystemStatus();
-        
-        // Enhance methods with real-time status
-        foreach ($methods as &$method) {
-            if (($method['type'] ?? null) === 'fpx') {
-                $method['b2c_available'] = $fpxStatus['b2c']['available'] ?? true;
-                $method['b2b1_available'] = $fpxStatus['b2b1']['available'] ?? true;
-                $method['banks'] = $this->getFPXBanksWithStatus();
-                $method['status_checked_at'] = $fpxStatus['checked_at'] ?? null;
-            }
-        }
-        
-        return $methods;
-    }
-
-    /**
      * Check if a specific payment method type is currently available.
      */
     public function isPaymentMethodAvailable(string $type): bool
     {
         switch ($type) {
             case 'fpx':
-                return $this->supportsFPX() && 
-                       (\Aizuddinmanap\CashierChip\FPX::isB2cAvailable() || 
+                return $this->supportsFPX() &&
+                       (\Aizuddinmanap\CashierChip\FPX::isB2cAvailable() ||
                         \Aizuddinmanap\CashierChip\FPX::isB2b1Available());
-            
+
             case 'card':
             case 'ewallet':
             case 'duitnow_qr':
-                // These are typically always available
                 return true;
-                
+
             default:
-                // Check if the payment method exists in available methods
                 $methods = $this->getAvailablePaymentMethods();
                 foreach ($methods as $method) {
                     if (($method['type'] ?? null) === $type) {
@@ -274,4 +353,4 @@ trait ManagesPaymentMethods
                 return false;
         }
     }
-} 
+}

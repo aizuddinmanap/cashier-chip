@@ -63,8 +63,7 @@ class SubscriptionBuilder
         $this->billable = $billable;
         $this->name = $name;
         $this->priceId = $priceId;
-        
-        // Try to load the plan if it exists locally
+
         $this->plan = $this->findPlan($priceId);
     }
 
@@ -131,29 +130,36 @@ class SubscriptionBuilder
 
     /**
      * Create the subscription.
+     *
+     * Aligned with Laravel Cashier Stripe: create($paymentMethod).
+     * When $paymentMethod is provided, it is used as the recurring token.
+     * When creating a new subscription without a saved payment method,
+     * use checkout() instead to redirect the customer to Chip's checkout page.
+     *
+     * @param  string|PaymentMethod|null  $paymentMethod  Payment method ID, chip_token_id, or PaymentMethod model
      */
-    public function create(array $options = []): Subscription
+    public function create($paymentMethod = null, array $options = []): Subscription
     {
-        // Merge builder options with method options
         $options = array_merge($this->options, $options);
 
-        // Check if this is a trial-only subscription
         $isTrialOnly = $this->trialEnds && ! $this->skipTrial;
 
+        // Resolve payment method token
+        $token = $this->resolvePaymentMethodToken($paymentMethod);
+
         try {
-            if ($isTrialOnly) {
-                // Trial subscriptions are local-only (no API call needed)
+            if ($isTrialOnly && ! $token) {
                 return $this->createTrialSubscription($options);
             }
 
-            // For paid subscriptions, ensure the billable model has a Chip customer
+            // Ensure the billable model has a Chip customer
             if (! $this->billable->hasChipId()) {
                 $this->billable->createAsChipCustomer();
             }
 
             // Create subscription via Chip API
-            $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-            
+            $api = new Http\ChipApi();
+
             $subscriptionData = [
                 'customer_id' => $this->billable->chipId(),
                 'price_id' => $this->priceId,
@@ -176,6 +182,11 @@ class SubscriptionBuilder
                 'ends_at' => null,
             ]);
 
+            // If a payment method token was provided, store it
+            if ($token && $paymentMethod instanceof PaymentMethod) {
+                $this->billable->updateDefaultPaymentMethod($paymentMethod->id);
+            }
+
             return $subscription;
 
         } catch (\Exception $e) {
@@ -184,14 +195,80 @@ class SubscriptionBuilder
     }
 
     /**
+     * Create a Checkout session for the subscription.
+     * Redirects customer to Chip's checkout page with force_recurring enabled.
+     *
+     * Sets force_recurring, payment_method_whitelist, and skip_capture automatically.
+     */
+    public function checkout(array $sessionOptions = []): Checkout
+    {
+        $amount = 0;
+
+        if ($this->plan) {
+            $amount = (int) ($this->plan->price * 100);
+        }
+
+        $isTrialOnly = $this->trialEnds && ! $this->skipTrial;
+
+        $checkout = Checkout::forSubscription($this->priceId, $this->quantity);
+
+        // Set client info from billable
+        $checkout->client(
+            $this->billable->email ?? '',
+            $this->billable->name ?? null
+        );
+
+        // Set the actual price as total_override
+        if ($amount > 0) {
+            $checkout->totalOverride($amount);
+        }
+
+        // Free trial = RM0 preauthorization
+        if ($isTrialOnly || $amount === 0) {
+            $checkout->skipCapture();
+            $checkout->totalOverride(0);
+        }
+
+        // Set platform
+        $checkout->platform(config('cashier.recurring.platform', 'api'));
+
+        // Set metadata
+        if (! empty($this->metadata)) {
+            $checkout->withMetadata($this->metadata);
+        }
+
+        // Merge session options
+        if (isset($sessionOptions['success_url'])) {
+            $checkout->successUrl($sessionOptions['success_url']);
+        }
+
+        if (isset($sessionOptions['cancel_url'])) {
+            $checkout->cancelUrl($sessionOptions['cancel_url']);
+        }
+
+        if (isset($sessionOptions['webhook_url'])) {
+            $checkout->webhookUrl($sessionOptions['webhook_url']);
+        }
+
+        // Add subscription reference metadata
+        $checkout->withMetadata([
+            'subscription_name' => $this->name,
+            'price_id' => $this->priceId,
+            'billable_id' => $this->billable->getKey(),
+            'billable_type' => $this->billable->getMorphClass(),
+        ]);
+
+        return $checkout;
+    }
+
+    /**
      * Create a trial-only subscription (local database only, no API call).
      */
     protected function createTrialSubscription(array $options = []): Subscription
     {
-        // Create local subscription record for trial
         return $this->billable->subscriptions()->create([
             'name' => $this->name,
-            'chip_id' => 'trial_' . uniqid(), // Generate local trial ID
+            'chip_id' => 'trial_' . uniqid(),
             'chip_status' => 'trialing',
             'chip_price_id' => $this->priceId,
             'quantity' => $this->quantity,
@@ -205,7 +282,6 @@ class SubscriptionBuilder
      */
     public function add(array $options = []): Subscription
     {
-        // This method is for adding existing Chip subscriptions to the local database
         return $this->billable->subscriptions()->create([
             'name' => $this->name,
             'chip_id' => $options['chip_id'] ?? 'sub_' . uniqid(),
@@ -215,6 +291,31 @@ class SubscriptionBuilder
             'trial_ends_at' => $this->trialEnds,
             'ends_at' => null,
         ]);
+    }
+
+    /**
+     * Resolve the payment method token from various input types.
+     */
+    protected function resolvePaymentMethodToken($paymentMethod): ?string
+    {
+        if (is_null($paymentMethod)) {
+            return null;
+        }
+
+        if ($paymentMethod instanceof PaymentMethod) {
+            return $paymentMethod->token();
+        }
+
+        if (is_string($paymentMethod)) {
+            // Try to find a PaymentMethod model first
+            $pm = PaymentMethod::where('chip_token_id', $paymentMethod)
+                ->orWhere('id', $paymentMethod)
+                ->first();
+
+            return $pm ? $pm->token() : $paymentMethod;
+        }
+
+        return null;
     }
 
     /**
@@ -286,14 +387,12 @@ class SubscriptionBuilder
      */
     protected function findPlan(string $priceId): ?Plan
     {
-        // First try to find by plan ID
         $plan = Plan::find($priceId);
-        
-        // If not found, try to find by chip_price_id
-        if (!$plan) {
+
+        if (! $plan) {
             $plan = Plan::where('chip_price_id', $priceId)->first();
         }
-        
+
         return $plan;
     }
 
@@ -304,7 +403,7 @@ class SubscriptionBuilder
     {
         $builder = new static($billable, $name, $plan->chip_price_id);
         $builder->plan = $plan;
-        
+
         return $builder;
     }
-} 
+}

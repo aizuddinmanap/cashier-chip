@@ -11,7 +11,7 @@ class Cashier
     /**
      * The Cashier library version.
      */
-    public static string $version = '1.0.18';
+    public static string $version = '1.1.0';
 
     /**
      * Indicates if Cashier routes will be registered.
@@ -57,6 +57,11 @@ class Cashier
      * The transaction model class name.
      */
     public static string $transactionModel = 'Aizuddinmanap\\CashierChip\\Transaction';
+
+    /**
+     * The payment method model class name.
+     */
+    public static string $paymentMethodModel = 'Aizuddinmanap\\CashierChip\\PaymentMethod';
 
     /**
      * Get the default currency used by Cashier.
@@ -207,6 +212,22 @@ class Cashier
     public static function transactionModel(): string
     {
         return static::$transactionModel;
+    }
+
+    /**
+     * Set the payment method model class name.
+     */
+    public static function usePaymentMethodModel(string $paymentMethodModel): void
+    {
+        static::$paymentMethodModel = $paymentMethodModel;
+    }
+
+    /**
+     * Get the payment method model class name.
+     */
+    public static function paymentMethodModel(): string
+    {
+        return static::$paymentMethodModel;
     }
 
     /**

@@ -17,6 +17,7 @@ class ChipServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->registerMiddleware();
         $this->registerRoutes();
         $this->registerResources();
         $this->registerPublishing();
@@ -33,15 +34,18 @@ class ChipServiceProvider extends ServiceProvider
             __DIR__.'/../config/cashier.php',
             'cashier'
         );
+    }
 
-        // Register middleware alias for Laravel 11+
-        if (method_exists($this->app['router'], 'aliasMiddleware')) {
-            $this->app['router']->aliasMiddleware('chip.webhook', VerifyWebhookSignature::class);
-        }
+    /**
+     * Register the chip.webhook middleware alias.
+     * Done in boot() so the router is fully available.
+     */
+    protected function registerMiddleware(): void
+    {
+        $router = $this->app['router'];
 
-        // For Laravel 11+, register middleware in the application
-        if (method_exists($this->app, 'alias')) {
-            $this->app->alias('chip.webhook', VerifyWebhookSignature::class);
+        if (method_exists($router, 'aliasMiddleware')) {
+            $router->aliasMiddleware('chip.webhook', VerifyWebhookSignature::class);
         }
     }
 

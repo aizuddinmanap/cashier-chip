@@ -374,6 +374,36 @@ class Subscription extends Model
     }
 
     /**
+     * Charge a renewal payment for this subscription using the saved recurring token.
+     *
+     * Creates a new purchase and charges it with the owner's stored payment method.
+     *
+     * @param  array  $options  Additional options for the charge
+     * @return \Aizuddinmanap\CashierChip\Transaction
+     */
+    public function renew(array $options = []): \Aizuddinmanap\CashierChip\Transaction
+    {
+        $owner = $this->owner()->first();
+
+        if (! $owner) {
+            throw new \Exception('Subscription has no owner.');
+        }
+
+        $amount = $this->amount();
+
+        if ($amount <= 0) {
+            throw new \Exception('Subscription has no billable amount.');
+        }
+
+        $description = $options['description'] ?? 'Subscription Renewal: ' . $this->name;
+
+        return $owner->chargeWithToken($amount, $description, array_merge([
+            'reference' => $this->id,
+            'currency' => $this->currency(),
+        ], $options));
+    }
+
+    /**
      * Check if the subscription has a Chip ID (not trial-only).
      */
     protected function hasChipId(): bool
@@ -390,7 +420,7 @@ class Subscription extends Model
     }
 
     /**
-     * Get the total amount for the subscription.
+     * Get the total amount for the subscription (in cents) multiplied by quantity.
      */
     public function amount(): int
     {
@@ -402,7 +432,13 @@ class Subscription extends Model
             });
         }
 
-        // Otherwise, use the subscription's own price
+        // Use Plan model if available (preferred — has real pricing data)
+        $plan = $this->plan();
+        if ($plan) {
+            return (int) round(((float) $plan->price) * 100) * max(1, (int) ($this->quantity ?? 1));
+        }
+
+        // Fallback to Price abstraction
         $price = $this->price();
         return $price ? $price->amount() : 0;
     }
@@ -412,6 +448,11 @@ class Subscription extends Model
      */
     public function currency(): string
     {
+        $plan = $this->plan();
+        if ($plan && $plan->currency) {
+            return $plan->currency;
+        }
+
         $price = $this->price();
         return $price ? $price->currency() : config('cashier.currency', 'MYR');
     }

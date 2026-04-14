@@ -46,6 +46,11 @@ abstract class TestCase extends Orchestra
         config()->set('cashier.chip.api_key', 'test_api_key');
         config()->set('cashier.chip.api_url', 'https://api.test.chip-in.asia/api/v1');
         config()->set('cashier.webhook.secret', 'test_webhook_secret');
+        config()->set('cashier.recurring.payment_methods', ['visa', 'mastercard', 'maestro']);
+        config()->set('cashier.recurring.creator_agent', 'Laravel-Cashier-Chip/test');
+        config()->set('cashier.recurring.platform', 'api');
+        config()->set('cashier.currency', 'myr');
+        config()->set('cashier.model', User::class);
     }
 
     protected function setUpDatabase(): void
@@ -111,8 +116,43 @@ abstract class TestCase extends Orchestra
             $table->string('refunded_from')->nullable();
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('status');
+        });
+
+        // Create plans table
+        Schema::create('plans', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('chip_price_id')->unique();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->decimal('price', 10, 2);
+            $table->string('currency', 3)->default('MYR');
+            $table->string('interval');
+            $table->integer('interval_count')->default(1);
+            $table->json('features')->nullable();
+            $table->boolean('active')->default(true);
+            $table->integer('sort_order')->default(0);
+            $table->string('stripe_price_id')->nullable();
+            $table->timestamps();
+        });
+
+        // Create payment_methods table
+        Schema::create('payment_methods', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('billable');
+            $table->string('chip_token_id')->unique();
+            $table->string('card_brand')->nullable();
+            $table->string('card_last_four', 4)->nullable();
+            $table->string('card_expiry_month', 2)->nullable();
+            $table->string('card_expiry_year', 4)->nullable();
+            $table->string('cardholder_name')->nullable();
+            $table->string('card_issuer_country', 2)->nullable();
+            $table->string('masked_pan')->nullable();
+            $table->string('card_type')->nullable();
+            $table->boolean('is_default')->default(false);
+            $table->json('metadata')->nullable();
+            $table->timestamps();
         });
     }
 
