@@ -1,5 +1,6 @@
 <?php
 
+use Aizuddinmanap\CashierChip\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -12,6 +13,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::post('/webhook', 'WebhookController@handleWebhook')
+Route::post('/webhook', [WebhookController::class, 'handleWebhook'])
     ->name('webhook')
-    ->middleware('chip.webhook'); 
+    ->middleware('chip.webhook');

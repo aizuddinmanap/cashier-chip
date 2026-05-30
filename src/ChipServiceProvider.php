@@ -57,7 +57,6 @@ class ChipServiceProvider extends ServiceProvider
         if (Cashier::$registersRoutes) {
             Route::group([
                 'prefix' => config('cashier.path', 'chip'),
-                'namespace' => 'Aizuddinmanap\CashierChip\Http\Controllers',
                 'as' => 'cashier.',
             ], function () {
                 $this->loadRoutesFrom(__DIR__.'/../routes/web.php');

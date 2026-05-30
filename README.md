@@ -6,11 +6,12 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.5**
+## 🎉 **Stable Release: v1.1.6**
 
-**New in v1.1.5 — Webhook Alignment & Stability Fixes:**
+**New in v1.1.6 — Webhook Alignment & Stability Fixes:**
 
 - 🐛 **Fixed logging crash** — `ChipApi::sanitizeLogData()` threw a `TypeError` (`strtolower()` on an integer list key, under `strict_types`) whenever a request body contained a list such as `products`. This fired only with `CHIP_LOGGING_ENABLED=true`; you can now safely enable logging again.
+- 🧹 **Modern route registration** — the auto-registered `/chip/webhook` route now uses array-callable syntax (`[WebhookController::class, 'handleWebhook']`) instead of the legacy `Controller@method` string, removing reliance on route-group namespace resolution. Fully robust on Laravel 12.
 
 **Webhook alignment & hardening (also in this release):**
 
