@@ -315,9 +315,55 @@ class ChipApiTest extends TestCase
     }
 
     #[Test]
-    public function it_sanitizes_sensitive_data_in_logs(): void
+    public function it_sanitizes_sensitive_data_without_crashing_on_list_keys(): void
     {
-        // This would need log assertion helpers, but demonstrates the concept
-        $this->assertTrue(true); // Placeholder for log sanitization test
+        $method = new \ReflectionMethod($this->api, 'sanitizeLogData');
+        $method->setAccessible(true);
+
+        $data = [
+            'json' => [
+                'authorization' => 'secret-token',
+                'purchase' => [
+                    // A list yields integer keys, which previously crashed
+                    // strtolower($key) with a TypeError under strict_types.
+                    'products' => [
+                        ['name' => 'Item A', 'price' => 1000],
+                        ['name' => 'Item B', 'price' => 2000],
+                    ],
+                ],
+            ],
+        ];
+
+        $result = $method->invoke($this->api, $data);
+
+        // No crash, sensitive key redacted, list data left intact.
+        $this->assertEquals('***REDACTED***', $result['json']['authorization']);
+        $this->assertEquals('Item A', $result['json']['purchase']['products'][0]['name']);
+        $this->assertEquals(2000, $result['json']['purchase']['products'][1]['price']);
+    }
+
+    #[Test]
+    public function it_logs_request_with_product_list_when_logging_enabled(): void
+    {
+        // Regression: with logging on, a purchase body containing a products
+        // list used to throw a TypeError inside sanitizeLogData().
+        config()->set('cashier.logging.enabled', true);
+        config()->set('cashier.logging.channel', 'null');
+
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'purchase_log_1']),
+        ]);
+
+        $result = $this->api->createPurchase([
+            'purchase' => [
+                'currency' => 'MYR',
+                'products' => [
+                    ['name' => 'Test Product', 'price' => 10000, 'quantity' => 1],
+                ],
+            ],
+            'brand_id' => 'test_brand',
+        ]);
+
+        $this->assertEquals('purchase_log_1', $result['id']);
     }
 } 

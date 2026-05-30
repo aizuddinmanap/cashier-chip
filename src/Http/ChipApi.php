@@ -174,7 +174,9 @@ class ChipApi
         $sensitiveKeys = ['password', 'token', 'secret', 'key', 'authorization'];
         
         array_walk_recursive($data, function (&$value, $key) use ($sensitiveKeys) {
-            if (in_array(strtolower($key), $sensitiveKeys)) {
+            // Lists (e.g. the products array) yield integer keys; cast before
+            // strtolower(), which throws a TypeError on a non-string under strict_types.
+            if (in_array(strtolower((string) $key), $sensitiveKeys, true)) {
                 $value = '***REDACTED***';
             }
         });

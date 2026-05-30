@@ -6,9 +6,13 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.4**
+## 🎉 **Stable Release: v1.1.5**
 
-**New in v1.1.4 — Webhook Alignment & Hardening:**
+**New in v1.1.5 — Webhook Alignment & Stability Fixes:**
+
+- 🐛 **Fixed logging crash** — `ChipApi::sanitizeLogData()` threw a `TypeError` (`strtolower()` on an integer list key, under `strict_types`) whenever a request body contained a list such as `products`. This fired only with `CHIP_LOGGING_ENABLED=true`; you can now safely enable logging again.
+
+**Webhook alignment & hardening (also in this release):**
 
 - 🐛 **Fixed `success_callback` handling** — Chip's per-purchase callback POSTs the raw Purchase object (with a `status`, no `event_type`). Earlier versions rejected this with a `400`, so paid orders were never marked successful. The webhook now derives the event from `status` when `event_type` is absent.
 - 🐛 **Corrected webhook event names** — now uses Chip's real identifiers (`purchase.paid`, `purchase.payment_failure`, `payment.refunded`) instead of the previous non-existent names (`purchase.completed`, `purchase.failed`, `purchase.refunded`). Old names are still accepted as legacy aliases.
@@ -34,7 +38,7 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 116 Tests Passing** - Comprehensive test coverage with 384+ assertions
+- ✅ **All 117 Tests Passing** - Comprehensive test coverage with 387+ assertions
 - ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
