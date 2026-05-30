@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
+use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Money\Currency;
@@ -120,6 +121,30 @@ class Transaction extends Model
     public function refunded(): bool
     {
         return $this->status === 'refunded';
+    }
+
+    /**
+     * Determine if the transaction is authorized (skip_capture) awaiting capture.
+     */
+    public function preauthorized(): bool
+    {
+        return $this->status === 'preauthorized';
+    }
+
+    /**
+     * Determine if the transaction is on hold awaiting capture.
+     */
+    public function onHold(): bool
+    {
+        return $this->status === 'on_hold';
+    }
+
+    /**
+     * Determine if the transaction was voided (authorization released).
+     */
+    public function voided(): bool
+    {
+        return $this->status === 'voided';
     }
 
     /**
@@ -382,4 +407,81 @@ class Transaction extends Model
             'processed_at' => now(),
         ]);
     }
-} 
+
+    /**
+     * Determine if this transaction can be captured.
+     *
+     * Only an authorized (skip_capture) or held payment may be captured.
+     */
+    public function capturable(): bool
+    {
+        return in_array($this->status, ['preauthorized', 'on_hold'], true);
+    }
+
+    /**
+     * Capture a previously authorized (skip_capture) or held payment.
+     *
+     * @param  int|null  $amount  Amount in cents to capture; null captures the full amount.
+     */
+    public function capture(?int $amount = null): self
+    {
+        if (! $this->capturable()) {
+            throw new \Exception("Transaction {$this->id} is not in a capturable state ({$this->status}).");
+        }
+
+        if (! $this->chip_id) {
+            throw new \Exception("Transaction {$this->id} has no Chip purchase ID to capture.");
+        }
+
+        $data = [];
+        if ($amount !== null) {
+            $data['amount'] = $amount;
+        }
+
+        $response = (new ChipApi())->capturePurchase($this->chip_id, $data);
+
+        if (! is_array($response) || ($response['status'] ?? null) !== 'paid') {
+            throw new \Exception("Chip did not confirm capture for transaction {$this->id}.");
+        }
+
+        $this->update([
+            'status' => 'success',
+            'payment_method' => $response['transaction_data']['payment_method'] ?? $this->payment_method,
+            'processed_at' => now(),
+        ]);
+
+        return $this;
+    }
+
+    /**
+     * Determine if this transaction can be voided (its authorization released).
+     */
+    public function voidable(): bool
+    {
+        return in_array($this->status, ['preauthorized', 'on_hold'], true);
+    }
+
+    /**
+     * Void (release) a previously authorized or held payment without capturing it.
+     */
+    public function void(): self
+    {
+        if (! $this->voidable()) {
+            throw new \Exception("Transaction {$this->id} is not in a voidable state ({$this->status}).");
+        }
+
+        if (! $this->chip_id) {
+            throw new \Exception("Transaction {$this->id} has no Chip purchase ID to void.");
+        }
+
+        $response = (new ChipApi())->releasePurchase($this->chip_id);
+
+        if (! is_array($response) || ($response['status'] ?? null) !== 'released') {
+            throw new \Exception("Chip did not confirm release for transaction {$this->id}.");
+        }
+
+        $this->update(['status' => 'voided']);
+
+        return $this;
+    }
+}

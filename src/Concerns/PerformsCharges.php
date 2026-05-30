@@ -66,6 +66,36 @@ trait PerformsCharges
     }
 
     /**
+     * Capture a previously authorized (skip_capture) or held charge.
+     *
+     * @param  int|null  $amount  Amount in cents to capture; null captures the full amount.
+     */
+    public function captureCharge(string $transactionId, ?int $amount = null): Transaction
+    {
+        $transaction = $this->findTransaction($transactionId);
+
+        if (! $transaction) {
+            throw new \Exception("Transaction {$transactionId} not found.");
+        }
+
+        return $transaction->capture($amount);
+    }
+
+    /**
+     * Void (release) a previously authorized or held charge without capturing it.
+     */
+    public function voidCharge(string $transactionId): Transaction
+    {
+        $transaction = $this->findTransaction($transactionId);
+
+        if (! $transaction) {
+            throw new \Exception("Transaction {$transactionId} not found.");
+        }
+
+        return $transaction->void();
+    }
+
+    /**
      * Charge a customer using a saved recurring token.
      *
      * Creates a new purchase then charges it with the stored token.

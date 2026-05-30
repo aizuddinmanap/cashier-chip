@@ -6,9 +6,24 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.6**
+## 🎉 **Stable Release: v1.1.7**
 
-**New in v1.1.6 — Webhook Alignment & Stability Fixes:**
+**New in v1.1.7 — Manual Capture & Void:**
+
+- ✅ **Authorize → Capture / Void flow** — complete the `skip_capture` (authorize) lifecycle. Capture a held/preauthorized payment with `$transaction->capture()` (supports partial amounts) or release it with `$transaction->void()`. Billable wrappers `captureCharge($id, $amount)` / `voidCharge($id)` are also available. Mirrors the official WooCommerce plugin's manual capture/void.
+
+```php
+// Authorize at checkout
+$checkout = $user->newCharge(5000)->skipCapture()->checkout();
+
+// Later — capture the full amount (or pass cents for a partial capture)
+$transaction->capture();        // or ->capture(2000)
+
+// …or release the authorization without charging
+$transaction->void();
+```
+
+**Webhook alignment & stability fixes (earlier in the 1.1.x line):**
 
 - 🐛 **Fixed logging crash** — `ChipApi::sanitizeLogData()` threw a `TypeError` (`strtolower()` on an integer list key, under `strict_types`) whenever a request body contained a list such as `products`. This fired only with `CHIP_LOGGING_ENABLED=true`; you can now safely enable logging again.
 - 🧹 **Modern route registration** — the auto-registered `/chip/webhook` route now uses array-callable syntax (`[WebhookController::class, 'handleWebhook']`) instead of the legacy `Controller@method` string, removing reliance on route-group namespace resolution. Fully robust on Laravel 12.
@@ -39,7 +54,7 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 117 Tests Passing** - Comprehensive test coverage with 387+ assertions
+- ✅ **All 122 Tests Passing** - Comprehensive test coverage with 396+ assertions
 - ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
