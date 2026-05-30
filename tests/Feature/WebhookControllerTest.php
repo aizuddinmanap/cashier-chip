@@ -23,6 +23,10 @@ class WebhookControllerTest extends TestCase
         config()->set('cashier.webhook.public_key', null);
         config()->set('cashier.webhook.secret', null);
 
+        // Re-query is exercised in dedicated tests; disable it elsewhere so the
+        // other tests don't reach out to the Chip API.
+        config()->set('cashier.webhook.requery', false);
+
         $this->user = $this->createUser(['chip_id' => 'client_123']);
     }
 
@@ -331,5 +335,139 @@ class WebhookControllerTest extends TestCase
         $fresh = $subscription->fresh();
         $this->assertEquals('expired', $fresh->chip_status);
         $this->assertNotNull($fresh->ends_at);
+    }
+
+    // ---------------------------------------------------------------------
+    // #1 Terminal-state protection: a stale/duplicate callback must never
+    //    downgrade an already-successful payment.
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function stale_failure_callback_does_not_overwrite_successful_transaction(): void
+    {
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_terminal',
+            'chip_id' => 'purchase_terminal_1',
+            'total' => 1000,
+            'status' => 'success',
+            'currency' => 'MYR',
+        ]);
+
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.payment_failure',
+            'id' => 'purchase_terminal_1',
+        ])->assertStatus(200);
+
+        $this->assertEquals('success', $transaction->fresh()->status);
+    }
+
+    #[Test]
+    public function stale_hold_callback_does_not_overwrite_successful_transaction(): void
+    {
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_terminal_hold',
+            'chip_id' => 'purchase_terminal_hold',
+            'total' => 1000,
+            'status' => 'success',
+            'currency' => 'MYR',
+        ]);
+
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.hold',
+            'id' => 'purchase_terminal_hold',
+        ])->assertStatus(200);
+
+        $this->assertEquals('success', $transaction->fresh()->status);
+    }
+
+    // ---------------------------------------------------------------------
+    // #2 Authoritative re-query: the status fetched from Chip wins over the
+    //    (replayable) callback body.
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function requery_overrides_spoofed_paid_event_with_authoritative_status(): void
+    {
+        config()->set('cashier.webhook.requery', true);
+
+        \Illuminate\Support\Facades\Http::fake([
+            '*/purchases/*' => \Illuminate\Support\Facades\Http::response([
+                'id' => 'purchase_spoof_1',
+                'status' => 'error', // Chip says it actually failed
+            ], 200),
+        ]);
+
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_spoof',
+            'chip_id' => 'purchase_spoof_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        // Attacker/stale envelope claims the purchase is paid.
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.paid',
+            'id' => 'purchase_spoof_1',
+        ])->assertStatus(200);
+
+        // Authoritative status wins: marked failed, NOT success.
+        $this->assertEquals('failed', $transaction->fresh()->status);
+    }
+
+    #[Test]
+    public function requery_confirms_paid_status_and_marks_success(): void
+    {
+        config()->set('cashier.webhook.requery', true);
+
+        \Illuminate\Support\Facades\Http::fake([
+            '*/purchases/*' => \Illuminate\Support\Facades\Http::response([
+                'id' => 'purchase_confirm_1',
+                'status' => 'paid',
+            ], 200),
+        ]);
+
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_confirm',
+            'chip_id' => 'purchase_confirm_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        // success_callback body carries only a status, no event_type.
+        $this->postJson('/chip/webhook', [
+            'id' => 'purchase_confirm_1',
+            'status' => 'paid',
+        ])->assertStatus(200);
+
+        $this->assertEquals('success', $transaction->fresh()->status);
+        $this->assertNotNull($transaction->fresh()->processed_at);
+    }
+
+    #[Test]
+    public function requery_falls_back_to_payload_when_api_returns_no_status(): void
+    {
+        config()->set('cashier.webhook.requery', true);
+
+        // API reachable but returns no usable status -> fall back to the payload.
+        \Illuminate\Support\Facades\Http::fake([
+            '*/purchases/*' => \Illuminate\Support\Facades\Http::response(['id' => 'purchase_fallback_1'], 200),
+        ]);
+
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_fallback',
+            'chip_id' => 'purchase_fallback_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.paid',
+            'id' => 'purchase_fallback_1',
+        ])->assertStatus(200);
+
+        $this->assertEquals('success', $transaction->fresh()->status);
     }
 }

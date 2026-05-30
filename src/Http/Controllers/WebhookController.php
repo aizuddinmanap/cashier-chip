@@ -6,6 +6,7 @@ namespace Aizuddinmanap\CashierChip\Http\Controllers;
 
 use Aizuddinmanap\CashierChip\Cashier;
 use Aizuddinmanap\CashierChip\Events\WebhookReceived;
+use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Aizuddinmanap\CashierChip\Http\Middleware\VerifyWebhookSignature;
 use Aizuddinmanap\CashierChip\PaymentMethod;
 use Carbon\Carbon;
@@ -48,7 +49,12 @@ class WebhookController extends Controller
             return response('Webhook missing event type', 400);
         }
 
-        $event = $this->resolveEvent($payload);
+        // Don't trust the (replayable) callback body for purchase events — re-fetch
+        // the authoritative purchase from Chip, mirroring the official WooCommerce
+        // plugin's get_payment() re-query. Falls back to the payload on failure.
+        [$payload, $requeried] = $this->requeryPurchase($payload);
+
+        $event = $this->resolveEvent($payload, $requeried);
 
         $this->logWebhook($event ?? ($payload['event_type'] ?? $payload['status']), $payload);
 
@@ -114,13 +120,19 @@ class WebhookController extends Controller
     /**
      * Resolve the canonical event name from a webhook payload.
      *
-     * Prefers an explicit event_type; otherwise derives it from the Purchase
-     * status delivered by a success_callback / failure_callback. Returns null
-     * when the payload carries a status we deliberately do not act on (e.g.
-     * created / sent / viewed), which is acknowledged as a no-op.
+     * When the purchase was re-queried, the authoritative Purchase status is the
+     * source of truth and overrides any claimed event_type — this prevents a
+     * spoofed/stale "purchase.paid" envelope from completing an unpaid order.
+     * Otherwise prefers an explicit event_type, then falls back to the status
+     * delivered by a success_callback / failure_callback. Returns null for a
+     * status we deliberately do not act on (e.g. created / sent / viewed).
      */
-    protected function resolveEvent(array $payload): ?string
+    protected function resolveEvent(array $payload, bool $authoritative = false): ?string
     {
+        if ($authoritative && ! empty($payload['status'])) {
+            return $this->statusToEvent($payload['status']);
+        }
+
         if (! empty($payload['event_type'])) {
             return $payload['event_type'];
         }
@@ -130,6 +142,52 @@ class WebhookController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Re-fetch the authoritative purchase from Chip for purchase notifications.
+     *
+     * Mirrors the official WooCommerce plugin, which calls get_payment() rather
+     * than trusting the callback body. Returns [payload, wasRequeried]. The
+     * authoritative API data is merged over the webhook payload (preserving
+     * webhook-only keys such as event_type). Subscription events are not
+     * purchases and are skipped; any API failure falls back to the raw payload
+     * so delivery still succeeds.
+     */
+    protected function requeryPurchase(array $payload): array
+    {
+        if (! config('cashier.webhook.requery', true)) {
+            return [$payload, false];
+        }
+
+        // Subscription notifications are keyed on a subscription id, not a purchase.
+        if (str_starts_with($payload['event_type'] ?? '', 'subscription.')) {
+            return [$payload, false];
+        }
+
+        $purchaseId = $payload['id'] ?? null;
+
+        if (! $purchaseId) {
+            return [$payload, false];
+        }
+
+        try {
+            $authoritative = (new ChipApi())->getPurchase($purchaseId);
+        } catch (\Throwable $e) {
+            Log::warning('Chip purchase re-query failed; falling back to webhook payload', [
+                'purchase_id' => $purchaseId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [$payload, false];
+        }
+
+        if (! is_array($authoritative) || empty($authoritative['status'])) {
+            return [$payload, false];
+        }
+
+        // Authoritative API fields win; keep webhook-only fields (e.g. event_type).
+        return [array_merge($payload, $authoritative), true];
     }
 
     /**
@@ -208,19 +266,20 @@ class WebhookController extends Controller
 
         $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
-        if ($transaction) {
+        // Never downgrade an already-successful payment (stale/duplicate failure callback).
+        if ($transaction && $transaction->status !== 'success') {
             $transaction->update(['status' => 'failed']);
         }
 
         if (class_exists(\Aizuddinmanap\CashierChip\Payment::class)) {
             $payment = \Aizuddinmanap\CashierChip\Payment::where('chip_id', $purchaseId)->first();
 
-            if ($payment) {
+            if ($payment && $payment->status !== 'success') {
                 $payment->update(['status' => 'failed']);
             }
         }
 
-        // Clean up invalid recurring tokens
+        // Clean up invalid recurring tokens (independent of transaction state)
         $this->maybeDeleteInvalidToken($payload);
     }
 
@@ -237,7 +296,8 @@ class WebhookController extends Controller
 
         $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
-        if ($transaction) {
+        // A refund applies to a paid transaction; only skip if already refunded.
+        if ($transaction && $transaction->status !== 'refunded') {
             $transaction->update(['status' => 'refunded']);
         }
     }
@@ -256,10 +316,15 @@ class WebhookController extends Controller
             return;
         }
 
+        $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
+
+        // Don't process a stale preauth against an already-successful payment.
+        if ($transaction && $transaction->status === 'success') {
+            return;
+        }
+
         // Card verification flow stores the recurring token without charging
         $this->maybeStoreRecurringToken($payload);
-
-        $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
         if ($transaction) {
             $transaction->update([
@@ -284,7 +349,8 @@ class WebhookController extends Controller
 
         $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
-        if ($transaction) {
+        // Never downgrade an already-successful payment.
+        if ($transaction && $transaction->status !== 'success') {
             $transaction->update(['status' => 'on_hold']);
         }
     }
@@ -305,7 +371,8 @@ class WebhookController extends Controller
 
         $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
-        if ($transaction) {
+        // Never downgrade an already-successful payment.
+        if ($transaction && $transaction->status !== 'success') {
             $transaction->update(['status' => 'pending_charge']);
         }
     }

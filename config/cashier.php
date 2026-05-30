@@ -33,6 +33,11 @@ return [
     'webhook' => [
         'secret' => env('CHIP_WEBHOOK_SECRET'),
         'tolerance' => env('CHIP_WEBHOOK_TOLERANCE', 300),
+
+        // Re-fetch the authoritative purchase from Chip on each purchase webhook
+        // instead of trusting the (replayable) callback body. Mirrors the official
+        // WooCommerce plugin. Disable only if you cannot reach the Chip API.
+        'requery' => env('CHIP_WEBHOOK_REQUERY', true),
     ],
 
     /*

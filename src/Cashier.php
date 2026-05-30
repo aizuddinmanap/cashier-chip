@@ -11,7 +11,7 @@ class Cashier
     /**
      * The Cashier library version.
      */
-    public static string $version = '1.1.1';
+    public static string $version = '1.1.2';
 
     /**
      * Indicates if Cashier routes will be registered.
