@@ -257,11 +257,29 @@ class WebhookController extends Controller
 
         // Only transition (and dispatch) once — duplicate callbacks are no-ops.
         if ($transaction && $transaction->status !== 'success') {
-            $transaction->update([
+            $attributes = [
                 'status' => 'success',
                 'payment_method' => $payload['transaction_data']['payment_method'] ?? null,
                 'processed_at' => now(),
-            ]);
+            ];
+
+            // Record test-mode payments for support/debugging visibility — the
+            // equivalent of the official WooCommerce plugin's test-mode order note.
+            if (array_key_exists('is_test', $payload)) {
+                $attributes['metadata'] = array_merge(
+                    $transaction->metadata ?? [],
+                    ['is_test' => (bool) $payload['is_test']]
+                );
+
+                if ($payload['is_test']) {
+                    Log::info('Chip payment completed in TEST mode (no real funds moved)', [
+                        'purchase_id' => $purchaseId,
+                        'transaction_id' => $transaction->id,
+                    ]);
+                }
+            }
+
+            $transaction->update($attributes);
 
             Event::dispatch(new \Aizuddinmanap\CashierChip\Events\TransactionCompleted($transaction));
         }

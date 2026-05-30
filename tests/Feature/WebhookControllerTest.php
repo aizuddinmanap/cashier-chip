@@ -507,4 +507,77 @@ class WebhookControllerTest extends TestCase
             $lock->release();
         }
     }
+
+    // ---------------------------------------------------------------------
+    // #5 Test-mode visibility: is_test is recorded on the transaction.
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function paid_webhook_records_is_test_flag_in_metadata(): void
+    {
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_test_flag',
+            'chip_id' => 'purchase_test_flag',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+            'metadata' => ['order_id' => 42],
+        ]);
+
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.paid',
+            'id' => 'purchase_test_flag',
+            'is_test' => true,
+        ])->assertStatus(200);
+
+        $fresh = $transaction->fresh();
+        $this->assertEquals('success', $fresh->status);
+        $this->assertTrue($fresh->metadata['is_test']);
+        // Existing metadata is preserved.
+        $this->assertEquals(42, $fresh->metadata['order_id']);
+    }
+
+    // ---------------------------------------------------------------------
+    // #4 Public key normalization: a key with literal "\n" escapes still
+    //    verifies signatures (instead of silently 403-ing every webhook).
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function webhook_verifies_signature_with_escaped_newline_public_key(): void
+    {
+        // Generate an RSA keypair and sign a payload, mimicking Chip.
+        $keypair = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
+        $details = openssl_pkey_get_details($keypair);
+        $publicKeyPem = $details['key'];
+
+        // Configure the public key with literal "\n" escapes, as if pasted into .env.
+        config()->set('cashier.webhook.public_key', str_replace("\n", '\n', $publicKeyPem));
+
+        $body = json_encode(['event_type' => 'purchase.paid', 'id' => 'purchase_signed_1']);
+        openssl_sign($body, $signature, $keypair, OPENSSL_ALGO_SHA256);
+
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_signed',
+            'chip_id' => 'purchase_signed_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        $response = $this->call(
+            'POST',
+            '/chip/webhook',
+            [],
+            [],
+            [],
+            ['HTTP_X_SIGNATURE' => base64_encode($signature), 'CONTENT_TYPE' => 'application/json'],
+            $body
+        );
+
+        $response->assertStatus(200);
+        $this->assertEquals('success', $transaction->fresh()->status);
+    }
 }

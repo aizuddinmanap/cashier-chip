@@ -38,7 +38,7 @@ class VerifyWebhookSignature
      */
     protected function verify(Request $request): bool
     {
-        $publicKey = $this->getPublicKey();
+        $publicKey = $this->normalizePublicKey($this->getPublicKey());
 
         // If no public key is configured or fetchable, skip verification
         // (allows local testing without webhooks; users should always set this in production)
@@ -102,5 +102,22 @@ class VerifyWebhookSignature
                 return null;
             }
         });
+    }
+
+    /**
+     * Normalize a PEM public key.
+     *
+     * Keys pasted into .env / config (or returned escaped by some transports)
+     * often arrive with literal "\n" sequences instead of real newlines, which
+     * makes openssl_verify() silently fail and every webhook return 403. This
+     * mirrors the official WooCommerce plugin's str_replace( '\n', "\n", ... ).
+     */
+    protected function normalizePublicKey(?string $key): ?string
+    {
+        if (! $key) {
+            return $key;
+        }
+
+        return str_replace('\n', "\n", trim($key));
     }
 }
