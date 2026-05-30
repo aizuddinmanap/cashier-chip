@@ -27,23 +27,36 @@ class WebhookController extends Controller
 
     /**
      * Handle the incoming webhook.
+     *
+     * Chip delivers payment notifications through two different mechanisms:
+     *
+     *   1. Account-level webhooks (registered via cashier:webhook create) POST an
+     *      envelope containing an explicit "event_type" such as "purchase.paid".
+     *   2. Per-purchase success_callback / failure_callback POST the raw Purchase
+     *      object directly. That payload has a "status" (e.g. "paid") but NO
+     *      "event_type". This is the mechanism the official WooCommerce plugin uses.
+     *
+     * We accept both: an explicit event_type wins, otherwise we derive the event
+     * from the Purchase "status".
      */
     public function handleWebhook(Request $request): Response
     {
         $payload = $request->all();
-        $event = $payload['event_type'] ?? null;
 
-        if (! $event) {
+        // A webhook must carry at least one identifier: event_type or status.
+        if (! isset($payload['event_type']) && ! isset($payload['status'])) {
             return response('Webhook missing event type', 400);
         }
 
-        $this->logWebhook($event, $payload);
+        $event = $this->resolveEvent($payload);
+
+        $this->logWebhook($event ?? ($payload['event_type'] ?? $payload['status']), $payload);
 
         Event::dispatch(new WebhookReceived($payload));
 
-        $method = 'handle' . str_replace('_', '', ucwords(str_replace('.', '_', $event), '_'));
+        $method = $event ? ($this->eventHandlers()[$event] ?? null) : null;
 
-        if (method_exists($this, $method)) {
+        if ($method && method_exists($this, $method)) {
             try {
                 $this->{$method}($payload);
             } catch (\Exception $e) {
@@ -61,10 +74,90 @@ class WebhookController extends Controller
     }
 
     /**
-     * Handle purchase.completed webhook.
-     * Stores recurring token from response if present.
+     * Map a canonical event name to its handler method.
+     *
+     * Keys use Chip's real event identifiers. Legacy aliases that earlier
+     * versions of this package registered (purchase.completed / purchase.failed /
+     * purchase.refunded) are kept so previously-registered webhooks keep working.
      */
-    protected function handlePurchaseCompleted(array $payload): void
+    protected function eventHandlers(): array
+    {
+        return [
+            // Payment succeeded.
+            'purchase.paid' => 'handlePurchasePaid',
+            'purchase.completed' => 'handlePurchasePaid', // legacy alias
+
+            // Payment failed.
+            'purchase.payment_failure' => 'handlePurchaseFailed',
+            'purchase.failed' => 'handlePurchaseFailed', // legacy alias
+
+            // Refunds (Chip emits payment.refunded, not purchase.refunded).
+            'payment.refunded' => 'handlePurchaseRefunded',
+            'purchase.refunded' => 'handlePurchaseRefunded', // legacy alias
+
+            // Authorization / capture lifecycle.
+            'purchase.preauthorized' => 'handlePurchasePreauthorized',
+            'purchase.hold' => 'handlePurchaseHold',
+            'purchase.pending_charge' => 'handlePurchasePendingCharge',
+
+            // Subscription lifecycle. Chip has no native subscription.* webhooks —
+            // subscriptions are derived from purchase.paid (see
+            // maybeCreateSubscriptionFromPurchase) — but these handlers remain
+            // reachable for manual dispatch and backward compatibility.
+            'subscription.created' => 'handleSubscriptionCreated',
+            'subscription.updated' => 'handleSubscriptionUpdated',
+            'subscription.cancelled' => 'handleSubscriptionCancelled',
+            'subscription.expired' => 'handleSubscriptionExpired',
+        ];
+    }
+
+    /**
+     * Resolve the canonical event name from a webhook payload.
+     *
+     * Prefers an explicit event_type; otherwise derives it from the Purchase
+     * status delivered by a success_callback / failure_callback. Returns null
+     * when the payload carries a status we deliberately do not act on (e.g.
+     * created / sent / viewed), which is acknowledged as a no-op.
+     */
+    protected function resolveEvent(array $payload): ?string
+    {
+        if (! empty($payload['event_type'])) {
+            return $payload['event_type'];
+        }
+
+        if (! empty($payload['status'])) {
+            return $this->statusToEvent($payload['status']);
+        }
+
+        return null;
+    }
+
+    /**
+     * Translate a Chip Purchase "status" into a canonical event name.
+     */
+    protected function statusToEvent(string $status): ?string
+    {
+        return match ($status) {
+            'paid' => 'purchase.paid',
+            'preauthorized' => 'purchase.preauthorized',
+            'hold' => 'purchase.hold',
+            'pending_charge' => 'purchase.pending_charge',
+            'refunded' => 'payment.refunded',
+            'error', 'blocked', 'cancelled', 'expired', 'overdue' => 'purchase.payment_failure',
+            default => null,
+        };
+    }
+
+    /**
+     * Handle a successful purchase (Chip event: purchase.paid, or a
+     * success_callback Purchase object with status "paid").
+     *
+     * Stores the recurring token from the response if present, marks the
+     * transaction successful, and creates a subscription record when applicable.
+     * Guarded against duplicate deliveries so the TransactionCompleted event
+     * fires at most once per purchase.
+     */
+    protected function handlePurchasePaid(array $payload): void
     {
         $purchaseId = $payload['id'] ?? null;
 
@@ -78,7 +171,8 @@ class WebhookController extends Controller
         // Find the transaction and update its status
         $transaction = \Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->first();
 
-        if ($transaction) {
+        // Only transition (and dispatch) once — duplicate callbacks are no-ops.
+        if ($transaction && $transaction->status !== 'success') {
             $transaction->update([
                 'status' => 'success',
                 'payment_method' => $payload['transaction_data']['payment_method'] ?? null,
@@ -92,7 +186,7 @@ class WebhookController extends Controller
         if (class_exists(\Aizuddinmanap\CashierChip\Payment::class)) {
             $payment = \Aizuddinmanap\CashierChip\Payment::where('chip_id', $purchaseId)->first();
 
-            if ($payment) {
+            if ($payment && $payment->status !== 'success') {
                 $payment->update(['status' => 'success']);
             }
         }

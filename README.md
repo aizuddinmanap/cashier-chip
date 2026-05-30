@@ -6,11 +6,30 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.0.15**
+## 🎉 **Stable Release: v1.1.1**
+
+**New in v1.1.1 — Webhook Alignment Fix:**
+
+- 🐛 **Fixed `success_callback` handling** — Chip's per-purchase callback POSTs the raw Purchase object (with a `status`, no `event_type`). Earlier versions rejected this with a `400`, so paid orders were never marked successful. The webhook now derives the event from `status` when `event_type` is absent.
+- 🐛 **Corrected webhook event names** — now uses Chip's real identifiers (`purchase.paid`, `purchase.payment_failure`, `payment.refunded`) instead of the previous non-existent names (`purchase.completed`, `purchase.failed`, `purchase.refunded`). Old names are still accepted as legacy aliases.
+- ✅ **Idempotent delivery** — duplicate callbacks no longer re-dispatch `TransactionCompleted`.
+
+> **Action required after upgrading:** re-register your account webhook (`php artisan cashier:webhook create`) so Chip sends the corrected event names. The per-purchase `success_callback` flow works immediately with no re-registration.
+
+**New in v1.1.0 — Recurring Tokenization:**
+
+- ✅ **Recurring payments** — save cards as tokens, charge renewals without user interaction
+- ✅ **PaymentMethod model** — first-class Eloquent model with card brand, last-four, expiry, cardholder
+- ✅ **`addPaymentMethodIntent()`** — RM0 card verification flow (equivalent to Stripe's SetupIntent)
+- ✅ **`Subscription::renew()`** — one-line renewal charge using saved recurring token
+- ✅ **`force_recurring` checkout** — automatic card tokenization for subscription checkouts
+- ✅ **RSA webhook signature verification** — uses Chip's `/public_key/` endpoint with automatic caching
+- ✅ **Full webhook support** — handles `preauthorized`, `hold`, `pending_charge` statuses
+- ✅ **Invalid token cleanup** — automatically deletes stale tokens on `invalid_recurring_token` errors
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 72 Tests Passing** - Comprehensive test coverage with 273+ assertions  
+- ✅ **All 108 Tests Passing** - Comprehensive test coverage with 364+ assertions
 - ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
@@ -55,10 +74,11 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 - **Transaction-Based Billing**: Fast, local storage of all payment data
 - **Invoice Generation**: Convert transactions to invoices with optional PDF export
 - **Subscription Management**: Create, modify, cancel, and resume subscriptions
+- **Recurring Tokenization**: Save cards, charge renewals without user interaction
 - **One-time Payments**: Process single charges with full transaction tracking
 - **Refund Processing**: Full and partial refunds with automatic transaction linking
 - **Customer Management**: Automatic customer creation and synchronization
-- **Webhook Handling**: Secure webhook processing with automatic verification
+- **Webhook Handling**: RSA signature verification + comprehensive event handling
 - **FPX Support**: Malaysian bank transfers with real-time status checking
 - **Optional PDF Generation**: Customizable invoice templates with company branding (requires dompdf)
 
@@ -102,7 +122,29 @@ Add your Chip credentials to your `.env` file:
 ```env
 CHIP_API_KEY=your_chip_api_key
 CHIP_BRAND_ID=your_chip_brand_id
-CHIP_WEBHOOK_SECRET=your_webhook_secret
+```
+
+### Webhook Signature Verification (RSA)
+
+Chip signs webhooks with RSA. CashierChip fetches Chip's public key from `/public_key/` and caches it for 24 hours, so verification works out of the box. If you want to pin the key explicitly (recommended for production):
+
+```php
+// config/cashier.php
+'webhook' => [
+    'public_key' => env('CHIP_WEBHOOK_PUBLIC_KEY'), // PEM-formatted public key
+    'tolerance' => env('CHIP_WEBHOOK_TOLERANCE', 300),
+],
+```
+
+### Recurring Payment Defaults
+
+```php
+// config/cashier.php — defaults work for most apps
+'recurring' => [
+    'payment_methods' => ['visa', 'mastercard', 'maestro'],
+    'creator_agent' => env('CHIP_CREATOR_AGENT', 'Laravel-Cashier-Chip'),
+    'platform' => env('CHIP_PLATFORM', 'api'),
+],
 ```
 
 ### Add Billable Trait
@@ -120,13 +162,18 @@ class User extends Authenticatable
 
 ### Add Database Columns
 
-Add a migration to add the required column to your users table:
+The published migrations add these columns to the users table automatically (matching Laravel Cashier convention):
 
 ```php
 Schema::table('users', function (Blueprint $table) {
     $table->string('chip_id')->nullable()->index();
+    $table->timestamp('trial_ends_at')->nullable();
+    $table->string('pm_type')->nullable();        // cached card brand (e.g. 'visa')
+    $table->string('pm_last_four', 4)->nullable(); // cached last 4 digits
 });
 ```
+
+The package also creates dedicated tables for `customers`, `subscriptions`, `subscription_items`, `transactions`, `payment_methods`, and `plans`.
 
 ## 🧾 Working with Invoices (Laravel Cashier Compatible)
 
@@ -467,6 +514,164 @@ $user->subscription('default')->swap('new_price_id');
 // Update quantity
 $user->subscription('default')->updateQuantity(5);
 ```
+
+## 💳 Recurring Payments & Payment Methods
+
+CashierChip supports Chip's recurring token mechanism — save a customer's card once, then charge them for renewals without any further interaction. This is how subscription billing actually works in practice.
+
+### How Recurring Works on Chip
+
+Unlike Stripe (which manages cards server-side), Chip returns a `recurring_token` (the purchase ID) in the payment response. Your app stores this token locally and reuses it for future charges.
+
+**The flow:**
+
+1. Customer completes a checkout with `force_recurring: true` — Chip tokenizes the card
+2. Your webhook receives `purchase.paid` with `is_recurring_token: true`
+3. CashierChip saves the token as a `PaymentMethod` record
+4. Future renewal charges use the saved token — no user interaction needed
+
+### Subscription Checkout (with Tokenization)
+
+```php
+// Starts a checkout that tokenizes the card for future renewals.
+// Automatically sets force_recurring=true and limits to card methods (visa/mastercard/maestro).
+$checkout = $user->newSubscription('default', 'price_monthly')
+    ->trialDays(14)
+    ->checkout([
+        'success_url' => route('subscription.success'),
+        'cancel_url' => route('subscription.cancel'),
+    ]);
+
+return redirect($checkout->url());
+```
+
+### Adding a Payment Method (SetupIntent-style)
+
+Equivalent to Stripe Cashier's `createSetupIntent()` flow. Creates an RM0 preauthorization so the customer can verify a card without charging it.
+
+```php
+$intent = $user->addPaymentMethodIntent([
+    'success_redirect' => route('payment-methods.confirm'),
+    'failure_redirect' => route('payment-methods.index'),
+]);
+
+return redirect($intent['checkout_url']);
+```
+
+When the customer completes card entry, the `purchase.preauthorized` webhook fires and the token is saved automatically.
+
+### Managing Saved Payment Methods
+
+```php
+// List all saved payment methods
+$methods = $user->paymentMethods()->get();
+
+foreach ($methods as $pm) {
+    echo $pm->card_brand;         // visa
+    echo $pm->card_last_four;     // 1234
+    echo $pm->card_expiry_month;  // 12
+    echo $pm->card_expiry_year;   // 2028
+    echo $pm->cardholder_name;    // JOHN DOE
+    echo $pm->isDefault();        // true/false
+    echo $pm->isExpired();        // true/false
+}
+
+// Get the default payment method
+$default = $user->defaultPaymentMethod();
+
+// Change default
+$user->updateDefaultPaymentMethod($paymentMethodId);
+
+// Remove a payment method (deletes locally AND from Chip API)
+$user->removePaymentMethod($paymentMethodId);
+
+// Only non-expired methods
+$valid = $user->validPaymentMethods();
+```
+
+The `pm_type` and `pm_last_four` columns on the users table stay in sync with the default method automatically (matching Laravel Cashier Stripe convention).
+
+### Charging Subscription Renewals
+
+Renewal payments use the saved token — no customer interaction required:
+
+```php
+// Charge the next renewal for a subscription
+$transaction = $user->subscription('default')->renew();
+
+// Or charge manually with a custom amount
+$transaction = $user->chargeWithToken(
+    2999,                        // amount in cents
+    'Premium plan - Jan 2026',   // description
+    [
+        'payment_method' => $specificTokenId, // optional — defaults to user's default
+        'due_strict' => true,
+        'reference' => $invoiceId,
+    ]
+);
+
+if ($transaction->status === 'success') {
+    // Renewal charged successfully
+}
+```
+
+### Invalid Token Cleanup
+
+When a charge fails with Chip's `invalid_recurring_token` error (e.g., customer's card got cancelled), CashierChip **automatically deletes the token locally**. Your user's `defaultPaymentMethod()` is cleared and they'll need to add a new card. The webhook handles this without any action from you.
+
+### Schedule Renewals (Laravel Scheduler)
+
+```php
+// app/Console/Kernel.php
+protected function schedule(Schedule $schedule)
+{
+    $schedule->call(function () {
+        \App\Models\User::has('subscriptions')->chunk(100, function ($users) {
+            foreach ($users as $user) {
+                $sub = $user->subscription('default');
+                if ($sub && $sub->recurring()) {
+                    try {
+                        $sub->renew();
+                    } catch (\Exception $e) {
+                        // Token invalid, customer needs to re-add card
+                        logger()->warning("Renewal failed for user {$user->id}: {$e->getMessage()}");
+                    }
+                }
+            }
+        });
+    })->daily();
+}
+```
+
+### Webhook Events Handled
+
+CashierChip automatically handles these Chip webhook events:
+
+CashierChip handles both of Chip's delivery mechanisms: account-level webhooks (which carry an `event_type`) and per-purchase `success_callback` / `failure_callback` (which POST the raw Purchase object with a `status` and no `event_type`).
+
+| Event (`event_type` / Purchase `status`) | What happens |
+|-------|--------------|
+| `purchase.paid` / `paid` | Marks transaction as `success`, stores recurring token if present |
+| `purchase.preauthorized` / `preauthorized` | Stores recurring token (RM0 card verification flow) |
+| `purchase.payment_failure` / `error`, `blocked`, `cancelled`, `expired` | Marks transaction as `failed`, deletes token if `invalid_recurring_token` |
+| `purchase.hold` / `hold` | Marks transaction as `on_hold` (delayed capture) |
+| `purchase.pending_charge` / `pending_charge` | Marks transaction as `pending_charge` (renewal in progress) |
+| `payment.refunded` / `refunded` | Marks transaction as `refunded` |
+
+> **Legacy aliases:** the older `purchase.completed`, `purchase.failed`, and `purchase.refunded` names are still accepted so webhooks registered by earlier versions keep working. Chip has no native `subscription.*` events — subscriptions are derived automatically from `purchase.paid`.
+
+Register webhooks with Chip:
+
+```bash
+php artisan cashier:webhook create \
+  --url=https://yourapp.com/chip/webhook \
+  --events=purchase.paid \
+  --events=purchase.payment_failure \
+  --events=payment.refunded \
+  --events=purchase.preauthorized
+```
+
+> Running `cashier:webhook create` with no `--events` registers the full recommended set: `purchase.paid`, `purchase.payment_failure`, `payment.refunded`, `purchase.preauthorized`, `purchase.hold`, `purchase.pending_charge`.
 
 ## 🔄 Refunds
 

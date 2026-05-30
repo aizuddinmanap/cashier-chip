@@ -27,7 +27,7 @@ class WebhookControllerTest extends TestCase
     }
 
     #[Test]
-    public function it_returns_400_when_event_type_missing(): void
+    public function it_returns_400_when_no_event_type_or_status(): void
     {
         $response = $this->postJson('/chip/webhook', ['id' => 'purchase_123']);
 
@@ -35,10 +35,55 @@ class WebhookControllerTest extends TestCase
     }
 
     #[Test]
-    public function purchase_completed_marks_transaction_success(): void
+    public function purchase_paid_marks_transaction_success(): void
     {
         $transaction = $this->user->transactions()->create([
-            'id' => 'txn_1',
+            'id' => 'txn_paid',
+            'chip_id' => 'purchase_paid_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        $response = $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.paid',
+            'id' => 'purchase_paid_1',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals('success', $transaction->fresh()->status);
+        $this->assertNotNull($transaction->fresh()->processed_at);
+    }
+
+    #[Test]
+    public function success_callback_without_event_type_marks_transaction_success(): void
+    {
+        // Chip's per-purchase success_callback POSTs the raw Purchase object,
+        // which has a "status" but no "event_type". This is the official
+        // WooCommerce plugin's primary mechanism and must be handled.
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_callback',
+            'chip_id' => 'purchase_callback_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        $response = $this->postJson('/chip/webhook', [
+            'id' => 'purchase_callback_1',
+            'status' => 'paid',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals('success', $transaction->fresh()->status);
+        $this->assertNotNull($transaction->fresh()->processed_at);
+    }
+
+    #[Test]
+    public function legacy_purchase_completed_event_still_marks_success(): void
+    {
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_legacy',
             'chip_id' => 'purchase_completed_1',
             'total' => 1000,
             'status' => 'pending',
@@ -52,7 +97,32 @@ class WebhookControllerTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertEquals('success', $transaction->fresh()->status);
-        $this->assertNotNull($transaction->fresh()->processed_at);
+    }
+
+    #[Test]
+    public function duplicate_paid_callback_does_not_redispatch_completed_event(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([
+            \Aizuddinmanap\CashierChip\Events\TransactionCompleted::class,
+        ]);
+
+        $this->user->transactions()->create([
+            'id' => 'txn_dup',
+            'chip_id' => 'purchase_dup_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        $payload = ['event_type' => 'purchase.paid', 'id' => 'purchase_dup_1'];
+
+        $this->postJson('/chip/webhook', $payload)->assertStatus(200);
+        $this->postJson('/chip/webhook', $payload)->assertStatus(200);
+
+        \Illuminate\Support\Facades\Event::assertDispatchedTimes(
+            \Aizuddinmanap\CashierChip\Events\TransactionCompleted::class,
+            1
+        );
     }
 
     #[Test]
@@ -87,7 +157,7 @@ class WebhookControllerTest extends TestCase
     }
 
     #[Test]
-    public function purchase_failed_marks_transaction_failed(): void
+    public function purchase_payment_failure_marks_transaction_failed(): void
     {
         $transaction = $this->user->transactions()->create([
             'id' => 'txn_failed',
@@ -98,11 +168,30 @@ class WebhookControllerTest extends TestCase
         ]);
 
         $this->postJson('/chip/webhook', [
-            'event_type' => 'purchase.failed',
+            'event_type' => 'purchase.payment_failure',
             'id' => 'purchase_failed_1',
         ])->assertStatus(200);
 
         $this->assertEquals('failed', $transaction->fresh()->status);
+    }
+
+    #[Test]
+    public function payment_refunded_marks_transaction_refunded(): void
+    {
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_refunded',
+            'chip_id' => 'purchase_refunded_1',
+            'total' => 1000,
+            'status' => 'success',
+            'currency' => 'MYR',
+        ]);
+
+        $this->postJson('/chip/webhook', [
+            'event_type' => 'payment.refunded',
+            'id' => 'purchase_refunded_1',
+        ])->assertStatus(200);
+
+        $this->assertEquals('refunded', $transaction->fresh()->status);
     }
 
     #[Test]

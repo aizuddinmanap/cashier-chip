@@ -101,17 +101,17 @@ class WebhookCommand extends Command
         $events = $this->option('events');
         
         if (empty($events)) {
+            // Chip's real webhook event identifiers. The earlier list used names
+            // that do not exist in the Chip API (purchase.completed/failed/refunded
+            // and the subscription.* events), which caused webhook registration to
+            // be rejected and payment notifications to never fire.
             $defaultEvents = [
-                'purchase.completed',
-                'purchase.failed',
-                'purchase.refunded',
+                'purchase.paid',
+                'purchase.payment_failure',
+                'payment.refunded',
                 'purchase.preauthorized',
                 'purchase.hold',
                 'purchase.pending_charge',
-                'subscription.created',
-                'subscription.updated',
-                'subscription.cancelled',
-                'subscription.expired',
             ];
             
             $events = $this->choice(
