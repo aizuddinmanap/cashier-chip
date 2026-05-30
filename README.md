@@ -6,9 +6,9 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.7**
+## 🎉 **Stable Release: v1.1.8**
 
-**New in v1.1.7 — Manual Capture & Void:**
+**New in v1.1.8 — Manual Capture, Void & Reconciliation:**
 
 - ✅ **Authorize → Capture / Void flow** — complete the `skip_capture` (authorize) lifecycle. Capture a held/preauthorized payment with `$transaction->capture()` (supports partial amounts) or release it with `$transaction->void()`. Billable wrappers `captureCharge($id, $amount)` / `voidCharge($id)` are also available. Mirrors the official WooCommerce plugin's manual capture/void.
 
@@ -22,6 +22,19 @@ $transaction->capture();        // or ->capture(2000)
 // …or release the authorization without charging
 $transaction->void();
 ```
+
+- 🔄 **`cashier:reconcile` command** — recovers payments whose webhook was never delivered. Re-queries non-terminal transactions (`pending` / `preauthorized` / `on_hold` / `pending_charge`) from Chip, applies the authoritative status, and fires `TransactionCompleted` on recovery — the analog of the WooCommerce plugin's scheduled requery. Schedule it to run regularly:
+
+```php
+// routes/console.php (or the scheduler)
+Schedule::command('cashier:reconcile')->everyFifteenMinutes();
+```
+
+  Webhooks remain the real-time path — this command is only a backstop for the rare missed webhook. Two independent knobs control it: `cashier.reconcile.older_than` minutes (`CHIP_RECONCILE_OLDER_THAN`, default 5) is how long a transaction must sit before it's assumed missed (so in-flight payments are left alone), and the **schedule interval** is how often you sweep. A stuck-but-paid order recovers in roughly `older_than + one interval` — so every 15 min ≈ ~20 min worst case. When nothing is stuck the run is a single empty query (no API calls), so a short interval is cheap; tune to taste.
+
+  **Dead checkouts terminate themselves.** Every checkout is created with a `due` expiry (see below), so an unpaid purchase becomes `expired` on Chip, which the sweep resolves to `failed` through the normal path — no special "abandoned" state. As a backstop, the sweep also ignores anything older than `cashier.reconcile.max_age` minutes (`CHIP_RECONCILE_MAX_AGE`, default 2880 = 48h) so dead rows are never polled indefinitely.
+
+- ⏳ **Purchase expiry (`due`)** — checkouts now send a `due` timestamp so unpaid purchases expire on Chip instead of lingering forever, matching the official WooCommerce plugin. Default 60 minutes via `cashier.checkout.expiry_minutes` (`CHIP_CHECKOUT_EXPIRY_MINUTES`); override per-checkout with `->expiresIn($minutes)`, or set `0` to disable.
 
 **Webhook alignment & stability fixes (earlier in the 1.1.x line):**
 
@@ -54,7 +67,7 @@ $transaction->void();
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 122 Tests Passing** - Comprehensive test coverage with 396+ assertions
+- ✅ **All 127 Tests Passing** - Comprehensive test coverage with 408+ assertions
 - ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
+use Aizuddinmanap\CashierChip\Console\Commands\ReconcileCommand;
 use Aizuddinmanap\CashierChip\Console\Commands\WebhookCommand;
 use Aizuddinmanap\CashierChip\Http\Controllers\WebhookController;
 use Aizuddinmanap\CashierChip\Http\Middleware\VerifyWebhookSignature;
@@ -97,6 +98,7 @@ class ChipServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 WebhookCommand::class,
+                ReconcileCommand::class,
             ]);
         }
     }

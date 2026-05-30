@@ -133,6 +133,18 @@ class Checkout
     }
 
     /**
+     * Set how many minutes until the checkout expires (Chip `due`).
+     *
+     * Pass 0 to disable expiry for this checkout.
+     */
+    public function expiresIn(int $minutes): self
+    {
+        $this->data['expiry_minutes'] = $minutes;
+
+        return $this;
+    }
+
+    /**
      * Set the total override amount (in cents).
      */
     public function totalOverride(int $amount): self
@@ -336,6 +348,19 @@ class Checkout
 
         if (isset($this->data['due_strict'])) {
             $purchase['due_strict'] = $this->data['due_strict'];
+        }
+
+        // Purchase expiry: send a `due` epoch so unpaid purchases expire on Chip,
+        // mirroring the official WooCommerce plugin (time() + timing minutes).
+        $expiryMinutes = (int) ($this->data['expiry_minutes'] ?? config('cashier.checkout.expiry_minutes', 60));
+
+        if ($expiryMinutes > 0) {
+            $data['due'] = now()->addMinutes($expiryMinutes)->getTimestamp();
+
+            // A deadline implies strict timing unless the caller set it explicitly.
+            if (! isset($this->data['due_strict'])) {
+                $purchase['due_strict'] = true;
+            }
         }
 
         if (isset($this->data['total_override'])) {

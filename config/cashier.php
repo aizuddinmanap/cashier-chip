@@ -47,6 +47,33 @@ return [
         'lock_wait' => env('CHIP_WEBHOOK_LOCK_WAIT', 10),
     ],
 
+    'checkout' => [
+
+        // Minutes before an unpaid checkout expires, sent to Chip as the purchase
+        // `due` timestamp. 0 disables expiry.
+        'expiry_minutes' => env('CHIP_CHECKOUT_EXPIRY_MINUTES', 60),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reconciliation
+    |--------------------------------------------------------------------------
+    |
+    | The `cashier:reconcile` command re-queries non-terminal transactions to
+    | recover from missed webhooks. `older_than` is the minimum age (minutes)
+    | before a pending transaction is reconciled, leaving in-flight payments
+    | alone. Schedule the command to run regularly.
+    |
+    */
+
+    'reconcile' => [
+        'older_than' => env('CHIP_RECONCILE_OLDER_THAN', 5),
+
+        // Backstop (minutes): stop polling rows older than this. Keep it greater
+        // than checkout.expiry_minutes. Default 2880 (48h).
+        'max_age' => env('CHIP_RECONCILE_MAX_AGE', 2880),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Logging Configuration

@@ -201,4 +201,62 @@ class CheckoutTest extends TestCase
                 && ($data['force_recurring'] ?? false) === true;
         });
     }
+
+    #[Test]
+    public function checkout_sends_a_due_expiry_timestamp_by_default(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+                'id' => 'purchase_123',
+                'checkout_url' => 'https://checkout.chip-in.asia/123',
+            ]),
+        ]);
+
+        Checkout::forPayment(10000)->create();
+
+        Http::assertSent(function ($request) {
+            $data = $request->data();
+
+            return isset($data['due'])
+                && is_int($data['due'])
+                && $data['due'] > time()
+                && ($data['purchase']['due_strict'] ?? null) === true;
+        });
+    }
+
+    #[Test]
+    public function checkout_expiry_can_be_customized(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+                'id' => 'purchase_123',
+                'checkout_url' => 'https://checkout.chip-in.asia/123',
+            ]),
+        ]);
+
+        Checkout::forPayment(10000)->expiresIn(30)->create();
+
+        Http::assertSent(function ($request) {
+            $due = $request->data()['due'] ?? null;
+            // ~30 minutes from now, allowing a little slack for execution time.
+            return $due !== null && abs($due - (time() + 1800)) <= 60;
+        });
+    }
+
+    #[Test]
+    public function checkout_expiry_can_be_disabled(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+                'id' => 'purchase_123',
+                'checkout_url' => 'https://checkout.chip-in.asia/123',
+            ]),
+        ]);
+
+        Checkout::forPayment(10000)->expiresIn(0)->create();
+
+        Http::assertSent(function ($request) {
+            return ! isset($request->data()['due']);
+        });
+    }
 } 

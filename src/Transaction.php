@@ -409,6 +409,25 @@ class Transaction extends Model
     }
 
     /**
+     * Map a Chip purchase "status" to an internal transaction status.
+     *
+     * Returns null for transient states we don't act on (created / sent /
+     * viewed / pending_execute), so a reconcile pass leaves them untouched.
+     */
+    public static function mapChipStatus(string $chipStatus): ?string
+    {
+        return match ($chipStatus) {
+            'paid' => 'success',
+            'preauthorized' => 'preauthorized',
+            'hold' => 'on_hold',
+            'pending_charge' => 'pending_charge',
+            'refunded' => 'refunded',
+            'error', 'blocked', 'cancelled', 'expired', 'overdue' => 'failed',
+            default => null,
+        };
+    }
+
+    /**
      * Determine if this transaction can be captured.
      *
      * Only an authorized (skip_capture) or held payment may be captured.
