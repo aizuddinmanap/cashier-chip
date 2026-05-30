@@ -32,6 +32,26 @@ trait ManagesSubscriptions
     }
 
     /**
+     * Determine if the user is actively subscribed to one of the given prices.
+     *
+     * Cashier-compatible alias of subscribedToPlan().
+     */
+    public function subscribedToPrice($prices, string $subscription = 'default'): bool
+    {
+        return $this->subscribedToPlan($prices, $subscription);
+    }
+
+    /**
+     * Determine if the user is actively subscribed to one of the given products.
+     *
+     * Chip has no product layer, so this matches on the plan/price id.
+     */
+    public function subscribedToProduct($products, string $subscription = 'default'): bool
+    {
+        return $this->subscribedToPlan($products, $subscription);
+    }
+
+    /**
      * Determine if the entity is on the given plan.
      */
     public function onPlan(string $plan): bool

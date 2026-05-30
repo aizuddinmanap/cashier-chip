@@ -262,6 +262,33 @@ class Subscription extends Model
     }
 
     /**
+     * Determine if the subscription is for the given price.
+     */
+    public function hasPrice(string $priceId): bool
+    {
+        return $this->chip_price_id === $priceId;
+    }
+
+    /**
+     * Determine if the subscription is for the given product.
+     *
+     * Chip has no separate product layer — a plan/price is the unit of billing —
+     * so this matches on the plan/price id.
+     */
+    public function hasProduct(string $productId): bool
+    {
+        return $this->hasPrice($productId);
+    }
+
+    /**
+     * Determine if the subscription is past due.
+     */
+    public function pastDue(): bool
+    {
+        return $this->chip_status === 'past_due';
+    }
+
+    /**
      * Determine if the subscription is valid.
      */
     public function valid(): bool
@@ -336,6 +363,29 @@ class Subscription extends Model
     }
 
     /**
+     * Cancel the subscription at a specific moment in time.
+     */
+    public function cancelAt(\DateTimeInterface $date): self
+    {
+        if ($this->hasChipId()) {
+            try {
+                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+                $api->cancelSubscription($this->chip_id, [
+                    'effective_from' => Carbon::instance($date)->toIso8601String(),
+                ]);
+            } catch (\Exception $e) {
+                \Log::warning('Failed to schedule cancellation via Chip API: ' . $e->getMessage());
+            }
+        }
+
+        $this->fill(['ends_at' => Carbon::instance($date)])->save();
+
+        event(new \Aizuddinmanap\CashierChip\Events\SubscriptionCanceled($this));
+
+        return $this;
+    }
+
+    /**
      * Stop the subscription from cancelling (remove scheduled cancellation).
      */
     public function stopCancellation(): self
@@ -371,6 +421,47 @@ class Subscription extends Model
     public function resume(): self
     {
         return $this->stopCancellation();
+    }
+
+    /**
+     * Swap the subscription to a new price/plan.
+     */
+    public function swap($priceId, array $options = []): self
+    {
+        if ($this->hasChipId()) {
+            try {
+                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
+                $api->updateSubscription($this->chip_id, array_merge([
+                    'price_id' => $priceId,
+                ], $options));
+            } catch (\Exception $e) {
+                \Log::warning('Failed to swap subscription via Chip API: ' . $e->getMessage());
+            }
+        }
+
+        $attributes = ['chip_price_id' => $priceId];
+
+        if (isset($options['quantity'])) {
+            $attributes['quantity'] = $options['quantity'];
+        }
+
+        $this->fill($attributes)->save();
+
+        event(new \Aizuddinmanap\CashierChip\Events\SubscriptionUpdated($this));
+
+        return $this;
+    }
+
+    /**
+     * Swap the subscription to a new price and immediately charge a renewal.
+     */
+    public function swapAndInvoice($priceId, array $options = []): self
+    {
+        $this->swap($priceId, $options);
+
+        $this->renew($options);
+
+        return $this;
     }
 
     /**

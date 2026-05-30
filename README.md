@@ -4,11 +4,18 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 [![License](https://img.shields.io/packagist/l/aizuddinmanap/cashier-chip.svg?style=flat-square)](https://packagist.org/packages/aizuddinmanap/cashier-chip)
 
-Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
+Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. It bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.8**
+## 🎉 **Stable Release: v1.2.0**
 
-**New in v1.1.8 — Manual Capture, Void & Reconciliation:**
+**New in v1.2.0 — Closer Cashier parity:**
+
+- ✅ **`swap()` / `swapAndInvoice()`** — change a subscription's price/plan (and optionally charge the new price immediately).
+- ✅ **`cancelAt($date)`** — schedule cancellation for a specific date.
+- ✅ **`pastDue()`, `hasPrice()`, `hasProduct()`** — Cashier-style subscription guards.
+- ✅ **`subscribedToPrice()` / `subscribedToProduct()`** — Cashier-named billable checks (Chip has no product layer, so product matches the plan/price id).
+
+**Manual Capture, Void & Reconciliation:**
 
 - ✅ **Authorize → Capture / Void flow** — complete the `skip_capture` (authorize) lifecycle. Capture a held/preauthorized payment with `$transaction->capture()` (supports partial amounts) or release it with `$transaction->void()`. Billable wrappers `captureCharge($id, $amount)` / `voidCharge($id)` are also available. Mirrors the official WooCommerce plugin's manual capture/void.
 
@@ -54,40 +61,13 @@ Schedule::command('cashier:reconcile')->everyFifteenMinutes();
 
 > **Action required after upgrading:** re-register your account webhook (`php artisan cashier:webhook create`) so Chip sends the corrected event names. The per-purchase `success_callback` flow works immediately with no re-registration.
 
-**New in v1.1.0 — Recurring Tokenization:**
-
-- ✅ **Recurring payments** — save cards as tokens, charge renewals without user interaction
-- ✅ **PaymentMethod model** — first-class Eloquent model with card brand, last-four, expiry, cardholder
-- ✅ **`addPaymentMethodIntent()`** — RM0 card verification flow (equivalent to Stripe's SetupIntent)
-- ✅ **`Subscription::renew()`** — one-line renewal charge using saved recurring token
-- ✅ **`force_recurring` checkout** — automatic card tokenization for subscription checkouts
-- ✅ **RSA webhook signature verification** — uses Chip's `/public_key/` endpoint with automatic caching
-- ✅ **Full webhook support** — handles `preauthorized`, `hold`, `pending_charge` statuses
-- ✅ **Invalid token cleanup** — automatically deletes stale tokens on `invalid_recurring_token` errors
-
-**Production-ready with comprehensive bug fixes and enhanced test coverage:**
-
-- ✅ **All 127 Tests Passing** - Comprehensive test coverage with 408+ assertions
-- ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
-- ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
-- ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  
-- ✅ **Timestamp Fields Fixed** - Invoice objects now have proper `created_at` and `updated_at` fields
-- ✅ **Laravel View Compatibility** - No more null pointer errors in Blade templates
-- ✅ **Robust Error Handling** - Graceful fallbacks for missing customer/billable data
-- ✅ **PHPUnit 11 Compatible** - Modern test attributes, zero deprecations (down from 71!)
-- ✅ **Database Compatibility** - Works with both old and new transaction table schemas
-- ✅ **Metadata System Fixed** - Resolved circular reference and array conversion issues  
-- ✅ **Invoice Generation Stable** - Transaction-to-invoice conversion working perfectly
-- ✅ **Currency Display Fixed** - Malaysian Ringgit properly displays as "RM 29.90"
-- ✅ **PDF Generation Working** - Optional dompdf integration with error handling
-- ✅ **Dynamic Pricing** - No more hardcoded amounts, uses actual subscription pricing
-- ✅ **Laravel Cashier Compatible** - 100% API compatibility verified
+> **137 tests passing.** A familiar Laravel Cashier-style API covering the common surface — customers, charges, subscriptions, invoices, and payment methods. (Stripe-only features like the billing portal, SCA, and promotion codes aren't applicable to Chip.) Recurring tokenization, subscriptions, refunds, and capture/void are documented in detail below.
 
 ## ✨ Laravel Cashier Invoice Alignment
 
-**CashierChip v1.0.12+ includes full Laravel Cashier compatibility:**
+**CashierChip mirrors the Laravel Cashier API:**
 
-- ✅ **Perfect Laravel Cashier API** - Same methods as Stripe/Paddle Cashier
+- ✅ **Cashier-style API** - The same patterns you know from Stripe/Paddle Cashier
 - ✅ **Transaction-to-Invoice Bridge** - Your transactions work as invoices automatically  
 - ✅ **PDF Invoice Generation** - Professional PDFs with company branding (optional)
 - ✅ **Query Scopes & Filtering** - Powerful invoice management capabilities
@@ -108,7 +88,7 @@ Schedule::command('cashier:reconcile')->everyFifteenMinutes();
 
 ## 🚀 Features
 
-- **Laravel Cashier Compatibility**: 100% compatible API with Stripe/Paddle Cashier
+- **Laravel Cashier-style API**: familiar methods from Stripe/Paddle Cashier
 - **Transaction-Based Billing**: Fast, local storage of all payment data
 - **Invoice Generation**: Convert transactions to invoices with optional PDF export
 - **Subscription Management**: Create, modify, cancel, and resume subscriptions
@@ -119,6 +99,15 @@ Schedule::command('cashier:reconcile')->everyFifteenMinutes();
 - **Webhook Handling**: RSA signature verification + comprehensive event handling
 - **FPX Support**: Malaysian bank transfers with real-time status checking
 - **Optional PDF Generation**: Customizable invoice templates with company branding (requires dompdf)
+
+## ✅ Requirements
+
+| Requirement | Supported |
+|---|---|
+| **PHP** | 8.1 – 8.4 |
+| **Laravel** | 10, 11, 12, 13 |
+
+Each Laravel release pulls its matching dependencies automatically (e.g. Laravel 13 requires PHP 8.3+ and Symfony 7.4/8). Composer resolves the right combination for your PHP version, so older PHP simply installs an older supported Laravel.
 
 ## 📦 Installation
 
@@ -217,7 +206,7 @@ The package also creates dedicated tables for `customers`, `subscriptions`, `sub
 
 ### Basic Invoice Operations
 
-CashierChip automatically converts your transactions to invoices with full Laravel Cashier API compatibility:
+CashierChip automatically converts your transactions to invoices with Laravel Cashier-style invoice methods:
 
 ```php
 // Get all paid invoices (successful transactions)
@@ -958,7 +947,7 @@ Cashier::useCurrency('usd', 'en_US');
 
 ## 💰 Plans Management
 
-CashierChip v1.0.12+ includes an optional local plans table for better performance and developer experience. This allows you to store plan details locally instead of making API calls to fetch plan information.
+CashierChip includes an optional local plans table for better performance and developer experience. This allows you to store plan details locally instead of making API calls to fetch plan information.
 
 ### Benefits of Local Plans
 
@@ -1192,7 +1181,7 @@ CREATE TABLE transactions (
 );
 ```
 
-### Plans Table (Optional - v1.0.12+)
+### Plans Table (Optional)
 
 ```sql
 CREATE TABLE plans (
@@ -1291,10 +1280,6 @@ Both approaches work perfectly! The invoice approach provides Laravel Cashier co
 - **[LARAVEL_CASHIER_ALIGNMENT.md](LARAVEL_CASHIER_ALIGNMENT.md)** - Technical alignment details
 - **[LIBRARY_ASSESSMENT.md](LIBRARY_ASSESSMENT.md)** - Library analysis and improvements
 
-## 🤝 Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
 ## 🔒 Security
 
 If you discover any security related issues, please email aizuddinmanap@gmail.com instead of using the issue tracker.
@@ -1305,7 +1290,7 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 
 ## 💡 Key Benefits Recap
 
-1. **🎯 Laravel Cashier Compatible** - Same API as Stripe/Paddle Cashier
+1. **🎯 Cashier-style API** - Familiar methods from Stripe/Paddle Cashier
 2. **⚡ High Performance** - Local transaction storage, no external API calls for listings
 3. **🧾 Professional Invoices** - PDF generation with company branding (optional dompdf)
 4. **🔄 Transaction Foundation** - Fast, reliable transaction-based architecture
@@ -1313,7 +1298,7 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 6. **🛡️ Zero Breaking Changes** - Existing code continues to work
 7. **📊 Powerful Queries** - Rich filtering and reporting capabilities
 8. **🎨 UI Ready** - Complete Blade templates and examples included
-9. **✅ Production Stable** - v1.0.12 with all 71 tests passing (266+ assertions)
+9. **✅ Production Stable** - v1.2.0 with all 137 tests passing (429+ assertions)
 10. **🔧 Battle-Tested** - Metadata, invoice conversion, and PDF generation all verified
 11. **🧪 Modern PHPUnit** - Compatible with PHPUnit 11, reduced deprecations by 98.6%
 12. **🗄️ Database Flexible** - Works with both old and new transaction table schemas
@@ -1321,42 +1306,6 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 14. **🛡️ Regression Protected** - Comprehensive test coverage prevents timestamp bugs
 
 ## 🐛 Troubleshooting
-
-### PDF Generation Errors
-
-**Issue 1**: "Call to a member function on null" when generating PDFs
-
-**Cause**: This was a null pointer error in v1.0.12 and earlier when the billable entity was null.
-
-**Solution**: Upgrade to v1.0.13+ which includes proper null checks:
-
-```php
-// Fixed in v1.0.13 - now safe with null billable
-$invoice = $user->findInvoice('txn_123');
-$response = $invoice->downloadPDF($brandingData); // No longer crashes
-```
-
-**Issue 2**: "Call to a member function format() on null" when generating PDFs
-
-**Cause**: This was a date formatting error in v1.0.13 and earlier when `paid_at` was null.
-
-**Solution**: Upgrade to v1.0.14+ which includes proper date null checks:
-
-```php
-// Fixed in v1.0.14 - now safe with null paid_at dates
-$invoice = $user->findInvoice('txn_123');
-$response = $invoice->downloadPDF($brandingData); // Shows "N/A" for null dates
-```
-
-**Workaround for older versions**: Ensure all date fields are properly set when creating invoices.
-
-### Invoice Timestamp Errors
-
-**Issue**: Null pointer errors accessing `$invoice->created_at` in Blade templates
-
-**Cause**: Fixed in v1.0.12 - invoice conversion wasn't setting Laravel timestamp fields.
-
-**Solution**: Upgrade to v1.0.12+ for proper timestamp field handling.
 
 ### Missing PDF Dependencies
 
@@ -1370,4 +1319,4 @@ composer require dompdf/dompdf
 
 PDF generation is optional - only install if you need invoice PDFs.
 
-**CashierChip v1.0.12 bridges the gap between transaction-based performance and Laravel Cashier's familiar invoice patterns - giving you the best of both worlds with production-grade stability, modern testing, and bulletproof timestamp handling!** 🚀
+**CashierChip bridges the gap between transaction-based performance and Laravel Cashier's familiar invoice patterns - giving you the best of both worlds with production-grade stability, modern testing, and bulletproof timestamp handling!** 🚀
