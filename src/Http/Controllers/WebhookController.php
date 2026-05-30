@@ -10,9 +10,11 @@ use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Aizuddinmanap\CashierChip\Http\Middleware\VerifyWebhookSignature;
 use Aizuddinmanap\CashierChip\PaymentMethod;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -64,7 +66,22 @@ class WebhookController extends Controller
 
         if ($method && method_exists($this, $method)) {
             try {
-                $this->{$method}($payload);
+                // Serialize concurrent deliveries for the same purchase so a server
+                // callback and its retry/redirect can't race on a read-then-write.
+                // This is the portable equivalent of the official WooCommerce
+                // plugin's per-order GET_LOCK / pg_advisory_lock.
+                Cache::lock('chip_webhook_' . $this->lockId($payload), 15)
+                    ->block(
+                        (int) config('cashier.webhook.lock_wait', 10),
+                        fn () => $this->{$method}($payload)
+                    );
+            } catch (LockTimeoutException $e) {
+                // Another delivery holds the lock and is already handling this
+                // purchase. Acknowledge so Chip stops retrying.
+                Log::info('Chip webhook lock contention; treating as duplicate delivery', [
+                    'event' => $event,
+                    'id' => $this->lockId($payload),
+                ]);
             } catch (\Exception $e) {
                 Log::error('Webhook handling failed', [
                     'event' => $event,
@@ -77,6 +94,15 @@ class WebhookController extends Controller
         }
 
         return response('Webhook handled', 200);
+    }
+
+    /**
+     * The identifier used to serialize concurrent deliveries for the same
+     * resource — the purchase id, or the subscription id for subscription events.
+     */
+    protected function lockId(array $payload): string
+    {
+        return (string) ($payload['id'] ?? $payload['subscription']['id'] ?? 'unknown');
     }
 
     /**

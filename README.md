@@ -6,14 +6,15 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. **Now with 100% Laravel Cashier API compatibility**, it seamlessly bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.1.2**
+## 🎉 **Stable Release: v1.1.3**
 
-**New in v1.1.2 — Webhook Alignment & Hardening:**
+**New in v1.1.3 — Webhook Alignment & Hardening:**
 
 - 🐛 **Fixed `success_callback` handling** — Chip's per-purchase callback POSTs the raw Purchase object (with a `status`, no `event_type`). Earlier versions rejected this with a `400`, so paid orders were never marked successful. The webhook now derives the event from `status` when `event_type` is absent.
 - 🐛 **Corrected webhook event names** — now uses Chip's real identifiers (`purchase.paid`, `purchase.payment_failure`, `payment.refunded`) instead of the previous non-existent names (`purchase.completed`, `purchase.failed`, `purchase.refunded`). Old names are still accepted as legacy aliases.
 - 🐛 **Terminal-state protection** — a stale or duplicate `failed`/`hold`/`preauthorized`/`pending_charge` callback can no longer downgrade an already-successful transaction.
 - 🔒 **Authoritative re-query** — purchase webhooks now re-fetch the purchase from Chip and trust the API's status over the (replayable) callback body, mirroring the official WooCommerce plugin's `get_payment()`. Configurable via `cashier.webhook.requery` (`CHIP_WEBHOOK_REQUERY`, default on).
+- 🔒 **Per-purchase idempotency lock** — concurrent deliveries (server callback + retry/redirect) are serialized with an atomic lock, the portable equivalent of the official plugin's `GET_LOCK`/`pg_advisory_lock`. Wait time configurable via `cashier.webhook.lock_wait` (`CHIP_WEBHOOK_LOCK_WAIT`). Use a shared cache store (redis/memcached/database/file) for cross-process protection.
 - ✅ **Idempotent delivery** — duplicate callbacks no longer re-dispatch `TransactionCompleted`.
 
 > **Action required after upgrading:** re-register your account webhook (`php artisan cashier:webhook create`) so Chip sends the corrected event names. The per-purchase `success_callback` flow works immediately with no re-registration.
@@ -31,7 +32,7 @@ Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https:
 
 **Production-ready with comprehensive bug fixes and enhanced test coverage:**
 
-- ✅ **All 113 Tests Passing** - Comprehensive test coverage with 375+ assertions
+- ✅ **All 114 Tests Passing** - Comprehensive test coverage with 378+ assertions
 - ✅ **PHPUnit 11 Fully Compatible** - Zero deprecations remaining (down from 71!)
 - ✅ **PDF Date Formatting Fixed** - No more "format() on null" errors when paid_at is null
 - ✅ **PDF Generation Fixed** - No more null pointer errors in PDF generation when billable entity is null  

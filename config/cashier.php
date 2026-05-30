@@ -38,6 +38,13 @@ return [
         // instead of trusting the (replayable) callback body. Mirrors the official
         // WooCommerce plugin. Disable only if you cannot reach the Chip API.
         'requery' => env('CHIP_WEBHOOK_REQUERY', true),
+
+        // Seconds a webhook will wait to acquire the per-purchase processing lock
+        // before treating the delivery as a duplicate already being handled. The
+        // lock serializes concurrent deliveries (server callback + retry/redirect),
+        // equivalent to the official WooCommerce plugin's GET_LOCK. For cross-process
+        // protection use a shared cache store (redis/memcached/database/file).
+        'lock_wait' => env('CHIP_WEBHOOK_LOCK_WAIT', 10),
     ],
 
     /*

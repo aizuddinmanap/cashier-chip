@@ -470,4 +470,41 @@ class WebhookControllerTest extends TestCase
 
         $this->assertEquals('success', $transaction->fresh()->status);
     }
+
+    // ---------------------------------------------------------------------
+    // #3 Idempotency lock: a delivery that cannot acquire the per-purchase
+    //    lock (because a concurrent delivery holds it) is acknowledged
+    //    without double-processing.
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function webhook_skips_processing_when_purchase_lock_is_held(): void
+    {
+        // Don't wait around for the lock in the test.
+        config()->set('cashier.webhook.lock_wait', 0);
+
+        $transaction = $this->user->transactions()->create([
+            'id' => 'txn_locked',
+            'chip_id' => 'purchase_locked_1',
+            'total' => 1000,
+            'status' => 'pending',
+            'currency' => 'MYR',
+        ]);
+
+        // Simulate a concurrent delivery already holding the lock.
+        $lock = \Illuminate\Support\Facades\Cache::lock('chip_webhook_purchase_locked_1', 15);
+        $this->assertTrue($lock->get());
+
+        try {
+            $this->postJson('/chip/webhook', [
+                'event_type' => 'purchase.paid',
+                'id' => 'purchase_locked_1',
+            ])->assertStatus(200);
+
+            // Lock contention -> handler skipped, transaction left untouched.
+            $this->assertEquals('pending', $transaction->fresh()->status);
+        } finally {
+            $lock->release();
+        }
+    }
 }
