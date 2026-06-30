@@ -6,7 +6,11 @@
 
 Laravel Cashier Chip provides an expressive, fluent interface to [Chip's](https://www.chip-in.asia/) payment and subscription billing services. It bridges CashierChip's transaction-based architecture with Laravel Cashier's familiar invoice patterns.
 
-## 🎉 **Stable Release: v1.2.0**
+## 🎉 **Stable Release: v1.3.0**
+
+**New in v1.3.0 — Configurable customer model:**
+
+- ✅ **`cashier.customer_model` config** — swap the customer model (e.g. `App\Models\Customer`) via config or the `CASHIER_CUSTOMER_MODEL` env var, without code. `Cashier::useCustomerModel()` still works for runtime overrides. Your model should extend `Aizuddinmanap\CashierChip\Customer`.
 
 **New in v1.2.0 — Closer Cashier parity:**
 
@@ -43,12 +47,12 @@ Schedule::command('cashier:reconcile')->everyFifteenMinutes();
 
 - ⏳ **Purchase expiry (`due`)** — checkouts now send a `due` timestamp so unpaid purchases expire on Chip instead of lingering forever, matching the official WooCommerce plugin. Default 60 minutes via `cashier.checkout.expiry_minutes` (`CHIP_CHECKOUT_EXPIRY_MINUTES`); override per-checkout with `->expiresIn($minutes)`, or set `0` to disable.
 
-**Webhook alignment & stability fixes (earlier in the 1.1.x line):**
+**Webhook fixes & stability (earlier in the 1.1.x line):**
 
 - 🐛 **Fixed logging crash** — `ChipApi::sanitizeLogData()` threw a `TypeError` (`strtolower()` on an integer list key, under `strict_types`) whenever a request body contained a list such as `products`. This fired only with `CHIP_LOGGING_ENABLED=true`; you can now safely enable logging again.
 - 🧹 **Modern route registration** — the auto-registered `/chip/webhook` route now uses array-callable syntax (`[WebhookController::class, 'handleWebhook']`) instead of the legacy `Controller@method` string, removing reliance on route-group namespace resolution. Fully robust on Laravel 12.
 
-**Webhook alignment & hardening (also in this release):**
+**Webhook fixes & hardening (also in this release):**
 
 - 🐛 **Fixed `success_callback` handling** — Chip's per-purchase callback POSTs the raw Purchase object (with a `status`, no `event_type`). Earlier versions rejected this with a `400`, so paid orders were never marked successful. The webhook now derives the event from `status` when `event_type` is absent.
 - 🐛 **Corrected webhook event names** — now uses Chip's real identifiers (`purchase.paid`, `purchase.payment_failure`, `payment.refunded`) instead of the previous non-existent names (`purchase.completed`, `purchase.failed`, `purchase.refunded`). Old names are still accepted as legacy aliases.
@@ -63,28 +67,16 @@ Schedule::command('cashier:reconcile')->everyFifteenMinutes();
 
 > **137 tests passing.** A familiar Laravel Cashier-style API covering the common surface — customers, charges, subscriptions, invoices, and payment methods. (Stripe-only features like the billing portal, SCA, and promotion codes aren't applicable to Chip.) Recurring tokenization, subscriptions, refunds, and capture/void are documented in detail below.
 
-## ✨ Laravel Cashier Invoice Alignment
+## ✨ Laravel Cashier Invoices
 
 **CashierChip mirrors the Laravel Cashier API:**
 
 - ✅ **Cashier-style API** - The same patterns you know from Stripe/Paddle Cashier
-- ✅ **Transaction-to-Invoice Bridge** - Your transactions work as invoices automatically  
+- ✅ **Transaction-to-Invoice Bridge** - Your transactions work as invoices automatically
 - ✅ **PDF Invoice Generation** - Professional PDFs with company branding (optional)
 - ✅ **Query Scopes & Filtering** - Powerful invoice management capabilities
 - ✅ **Status Management** - Proper invoice statuses (paid, open, void, draft)
 - ✅ **Zero Breaking Changes** - Existing transaction code still works
-
-### 🔄 The CashierChip Difference
-
-**Unlike other Laravel Cashier packages:**
-- **Stripe/Paddle Cashier** - Uses external API for invoice data
-- **CashierChip** - Stores billing data as transactions locally, converts to invoices on-demand
-
-**This means:**
-- ✅ **Faster Performance** - No external API calls for invoice listing
-- ✅ **Offline Compatibility** - Works without internet for invoice views  
-- ✅ **Full Data Control** - All billing data in your database
-- ✅ **Laravel Cashier Compatible** - Same API, better performance
 
 ## 🚀 Features
 
@@ -518,8 +510,7 @@ $subscription->onTrial();                        // ✅ true only for trials
 $subscription->chip_status === 'trialing';       // ✅ trial status check
 ```
 
-**Laravel Cashier Alignment:**
-This matches [Laravel Cashier Paddle](https://github.com/laravel/cashier-paddle/) behavior where `'trialing'` is treated as a valid subscription state alongside `'active'`.
+This matches [Laravel Cashier Paddle](https://github.com/laravel/cashier-paddle/) behavior, where `'trialing'` is treated as a valid subscription state alongside `'active'`.
 
 > **Note:** Trial status recognition in `upcomingInvoice()` and subscription queries was fixed in v1.0.17+ to properly support both `'active'` and `'trialing'` statuses.
 
@@ -1274,12 +1265,6 @@ foreach ($invoices as $invoice) {
 
 Both approaches work perfectly! The invoice approach provides Laravel Cashier compatibility with additional features like PDF generation and proper status management.
 
-## 📚 Additional Documentation
-
-- **[CASHIER_INVOICE_EXAMPLES.md](CASHIER_INVOICE_EXAMPLES.md)** - Comprehensive invoice usage guide
-- **[LARAVEL_CASHIER_ALIGNMENT.md](LARAVEL_CASHIER_ALIGNMENT.md)** - Technical alignment details
-- **[LIBRARY_ASSESSMENT.md](LIBRARY_ASSESSMENT.md)** - Library analysis and improvements
-
 ## 🔒 Security
 
 If you discover any security related issues, please email aizuddinmanap@gmail.com instead of using the issue tracker.
@@ -1298,7 +1283,7 @@ Laravel Cashier Chip is open-sourced software licensed under the [MIT license](L
 6. **🛡️ Zero Breaking Changes** - Existing code continues to work
 7. **📊 Powerful Queries** - Rich filtering and reporting capabilities
 8. **🎨 UI Ready** - Complete Blade templates and examples included
-9. **✅ Production Stable** - v1.2.0 with all 137 tests passing (429+ assertions)
+9. **✅ Production Stable** - v1.3.0 with all 141 tests passing (433+ assertions)
 10. **🔧 Battle-Tested** - Metadata, invoice conversion, and PDF generation all verified
 11. **🧪 Modern PHPUnit** - Compatible with PHPUnit 11, reduced deprecations by 98.6%
 12. **🗄️ Database Flexible** - Works with both old and new transaction table schemas

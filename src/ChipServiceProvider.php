@@ -18,11 +18,22 @@ class ChipServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->registerModels();
         $this->registerMiddleware();
         $this->registerRoutes();
         $this->registerResources();
         $this->registerPublishing();
         $this->registerCommands();
+    }
+
+    /**
+     * Configure the models Cashier resolves from the application config.
+     */
+    protected function registerModels(): void
+    {
+        if ($customerModel = config('cashier.customer_model')) {
+            Cashier::useCustomerModel($customerModel);
+        }
     }
 
     /**

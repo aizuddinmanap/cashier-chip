@@ -118,6 +118,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Customer Model
+    |--------------------------------------------------------------------------
+    |
+    | This is the model Cashier uses to store customer records associated with
+    | your billable models. You may swap it for your own model — for example
+    | App\Models\Customer — as long as it extends the package's Customer model
+    | (or replicates its table, columns, and "billable" morph relation).
+    |
+    */
+
+    'customer_model' => env('CASHIER_CUSTOMER_MODEL', Aizuddinmanap\CashierChip\Customer::class),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cashier Path
     |--------------------------------------------------------------------------
     |
