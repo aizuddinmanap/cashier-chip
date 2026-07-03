@@ -731,7 +731,7 @@ class WebhookController extends Controller
             return;
         }
 
-        $billable->subscriptions()->create([
+        $subscription = $billable->subscriptions()->create([
             'name' => $metadata['subscription_name'],
             'chip_id' => $payload['id'],
             'chip_status' => 'active',
@@ -740,6 +740,10 @@ class WebhookController extends Controller
             'trial_ends_at' => null,
             'ends_at' => null,
         ]);
+
+        // Schedule the first token-based renewal one interval out (cashier:renew).
+        $subscription->renews_at = $subscription->nextRenewalFrom();
+        $subscription->save();
     }
 
     /**

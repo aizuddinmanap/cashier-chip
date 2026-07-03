@@ -182,6 +182,11 @@ class SubscriptionBuilder
             'ends_at' => null,
         ]);
 
+        // Schedule the first renewal: at trial end if trialing, else one interval
+        // out. cashier:renew charges token-based subscriptions when this passes.
+        $subscription->renews_at = $subscription->trial_ends_at ?? $subscription->nextRenewalFrom();
+        $subscription->save();
+
         // If a PaymentMethod model was provided, make it the default.
         if ($paymentMethod instanceof PaymentMethod) {
             $this->billable->updateDefaultPaymentMethod($paymentMethod->id);
@@ -270,6 +275,8 @@ class SubscriptionBuilder
             'quantity' => $this->quantity,
             'trial_ends_at' => $this->trialEnds,
             'ends_at' => null,
+            // First charge is attempted when the trial ends.
+            'renews_at' => $this->trialEnds,
         ]);
     }
 

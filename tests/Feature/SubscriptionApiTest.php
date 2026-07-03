@@ -33,33 +33,33 @@ class SubscriptionApiTest extends TestCase
     }
 
     #[Test]
-    public function swap_changes_the_price_locally(): void
+    public function swap_schedules_the_change_for_the_next_renewal(): void
     {
         $subscription = $this->makeSubscription();
 
         $subscription->swap('price_pro');
 
-        $this->assertEquals('price_pro', $subscription->fresh()->chip_price_id);
+        $fresh = $subscription->fresh();
+        // Current plan stays in effect until renewal; the change is pending.
+        $this->assertEquals('price_basic', $fresh->chip_price_id);
+        $this->assertEquals('price_pro', $fresh->pending_plan_id);
     }
 
     #[Test]
-    public function swap_calls_the_api_when_subscription_has_a_chip_id(): void
+    public function swap_makes_no_api_call_and_does_not_charge(): void
     {
-        Http::fake([
-            'api.test.chip-in.asia/api/v1/subscriptions/*' => Http::response(['id' => 'sub_123', 'status' => 'active']),
-        ]);
+        Http::fake();
 
         $subscription = $this->makeSubscription(['chip_id' => 'sub_123']);
 
         $subscription->swap('price_pro', ['quantity' => 3]);
 
-        $this->assertEquals('price_pro', $subscription->fresh()->chip_price_id);
-        $this->assertEquals(3, $subscription->fresh()->quantity);
+        $fresh = $subscription->fresh();
+        $this->assertEquals('price_pro', $fresh->pending_plan_id);
+        $this->assertEquals(3, $fresh->quantity);
 
-        Http::assertSent(function ($request) {
-            return str_contains($request->url(), '/subscriptions/sub_123')
-                && ($request['price_id'] ?? null) === 'price_pro';
-        });
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('transactions', 0);
     }
 
     #[Test]

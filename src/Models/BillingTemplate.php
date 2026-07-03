@@ -18,6 +18,11 @@ use Illuminate\Database\Eloquent\Model;
  * (mirrors the Product/Purchase DTO style) plus helpers that call the Chip API.
  *
  * Field names track Chip's official PHP SDK (lib/Model/Billing/BillingTemplate).
+ *
+ * @experimental Chip's hosted Billing Templates are a separate product that
+ *   Chip's own integrations (WooCommerce, etc.) don't use. Prefer the token +
+ *   scheduler subscription pattern (newSubscription()->checkout() + renew())
+ *   unless you specifically want Chip to own the entire billing cycle.
  */
 class BillingTemplate
 {

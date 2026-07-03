@@ -10,7 +10,7 @@ A Laravel Cashier–style interface to [CHIP](https://www.chip-in.asia/) for pay
 
 - **Cashier-style API** — the same patterns you know from Stripe/Paddle Cashier
 - **One-time payments** — charges, authorize/capture/void, hosted checkout
-- **Subscriptions, two ways** — token-based (you schedule renewals) or **native CHIP Billing Templates** (CHIP runs the whole recurring engine)
+- **Subscriptions** — a token + scheduler pattern (recommended; matches CHIP's own integrations). CHIP Billing Templates are also supported, as an experimental alternative
 - **Recurring tokenization** — save a card once, charge renewals with no user interaction
 - **Invoices + optional PDF** — transactions double as Cashier invoices
 - **Refunds, customers, FPX** — full and partial refunds, customer sync, Malaysian bank transfers
@@ -86,9 +86,9 @@ $transaction->capture();      // capture full amount (or ->capture(2000) for par
 $transaction->void();         // release the authorization without charging
 ```
 
-## Subscriptions (token-based)
+## Subscriptions (recommended)
 
-CashierChip stores a recurring token and **you** schedule renewals. Full control over when and how much you charge.
+**CHIP has no server-side subscription engine.** So — exactly like CHIP's own WooCommerce/OpenCart plugins — CashierChip stores a recurring **token** and **you** schedule renewals. This is the primary, battle-tested pattern: full control over when and how much you charge.
 
 ```php
 // Start a tokenizing checkout (sets force_recurring, limits to card methods)
@@ -114,31 +114,70 @@ $sub->active();  $sub->onTrial();  $sub->onGracePeriod();  $sub->pastDue();
 ### Manage
 
 ```php
-$sub->cancel();          // at period end
-$sub->cancelNow();       // immediately
-$sub->resume();          // while on grace period
-$sub->swap('new_price'); // change plan
-$sub->renew();           // charge next renewal via saved token
+$sub->cancel();                 // at period end
+$sub->cancelNow();              // immediately
+$sub->resume();                 // while on grace period
+$sub->swap('new_price');        // change plan at the NEXT renewal (no charge)
+$sub->swapAndInvoice('new');    // change now and charge immediately
+$sub->renew();                  // charge next renewal via saved token
 ```
 
+### Plan changes & proration
+
+Plan changes are **primitives** — the library doesn't impose a proration policy (upgrade-vs-downgrade, credit handling, day-count, tax, rounding are your business rules):
+
+- `swap($plan)` schedules the change for the **next renewal** — `pending_plan_id` is set, the current plan runs to `renews_at`, and `cashier:renew` switches it over. No math, no charge.
+- `swapAndInvoice($plan, ['amount' => n])` switches **now** and charges `n` (or the new plan's full amount if you omit it).
+
+Proration is a **pure, opt-in helper** — you call it only if you want it, then decide what to do with the number:
+
+```php
+use Aizuddinmanap\CashierChip\Proration;
+
+// Pure function — no DB, no side effects, deterministic:
+$delta = Proration::calculate($oldAmount, $newAmount, $periodStart, $periodEnd, $now);
+
+// Or the convenience that reads the subscription's own period + amounts:
+$delta = $sub->prorationFor('price_pro');   // > 0 owed (upgrade), < 0 credit (downgrade)
+
+// You decide the policy — e.g. charge an upgrade difference immediately:
+if ($delta > 0) {
+    $sub->swapAndInvoice('price_pro', ['amount' => $delta]);
+} else {
+    $sub->swap('price_pro');   // downgrade: defer to next renewal (or credit however you like)
+}
+```
+
+Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (failure) — hook these for receipts, dunning, tax, or accounting. The library charges and records; the policy is yours.
+
 ### Schedule renewals
+
+Each token-based subscription records a `renews_at`. The bundled `cashier:renew` command charges only the subscriptions that are **actually due**, advances `renews_at` by one interval on success, and marks `past_due` (retried after the grace period, with a `SubscriptionChargeFailed` event) on failure. Just schedule it:
 
 ```php
 // routes/console.php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::call(function () {
-    \App\Models\User::has('subscriptions')->chunk(100, fn ($users) =>
-        $users->each(fn ($u) => optional($u->subscription('default'))->recurring() && $u->subscription('default')->renew())
-    );
-})->daily();
+Schedule::command('cashier:renew')->daily();   // or ->hourly() for tighter cadence
 ```
 
-## Native Subscriptions (CHIP Billing Templates)
+Drive dunning off the failure event:
 
-Prefer to let **CHIP run the recurring engine**? Use a Billing Template with `is_subscription: true`. CHIP then handles everything **server-side**: billing-cycle math, auto-charging the tokenized card each cycle, trials, dunning (a failed charge emails the customer a payable invoice), and receipts. Your app just creates the template, adds subscribers, and lets webhooks mirror state.
+```php
+Event::listen(\Aizuddinmanap\CashierChip\Events\SubscriptionChargeFailed::class, function ($event) {
+    // $event->subscription is now past_due; retried after
+    // cashier.subscription.grace_period days. Email the customer, or cancel
+    // after N attempts.
+});
+```
 
-> **Which to use?** Billing Templates to offload scheduling/dunning/receipts to CHIP. Token-based (above) when you need full control over each charge.
+> Renewal **amounts come from your local Plans** (matched on `chip_price_id`) — define a Plan per price so `cashier:renew` knows how much to charge. Subscriptions without a matching Plan are skipped (logged), not charged.
+
+## Billing Templates (experimental)
+
+> ⚠️ **Experimental.** Billing Templates are CHIP's separate hosted billing product — CHIP's own libraries (WooCommerce, etc.) don't use them, and this integration is newer and less battle-tested. **Prefer the token + scheduler pattern above** unless you specifically want CHIP to own the entire billing cycle.
+
+If you'd rather hand the recurring engine to **CHIP**, use a Billing Template with `is_subscription: true`. CHIP then handles everything **server-side**: billing-cycle math, auto-charging the tokenized card each cycle, trials, dunning (a failed charge emails the customer a payable invoice), and receipts. Your app just creates the template, adds subscribers, and lets webhooks mirror state.
 
 ### Create a template
 
@@ -341,7 +380,7 @@ Cashier::useSubscriptionModel(App\Models\Subscription::class);
 composer test
 ```
 
-150+ tests cover the Cashier-compatible API, transactions, invoices/PDF, subscriptions (token-based and Billing Templates), webhooks, and CHIP API integration.
+150+ tests cover the Cashier-compatible API, transactions, invoices/PDF, subscriptions (token+scheduler and the experimental Billing Templates), webhooks, and CHIP API integration.
 
 ## License
 

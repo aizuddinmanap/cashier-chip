@@ -24,6 +24,7 @@ class Subscription extends Model
         'trial_ends_at' => 'datetime',
         'paused_at' => 'datetime',
         'ends_at' => 'datetime',
+        'renews_at' => 'datetime',
     ];
 
     /**
@@ -70,6 +71,117 @@ class Subscription extends Model
         }
         
         return $plan;
+    }
+
+    /**
+     * Compute the next renewal date from the given time using the plan interval.
+     *
+     * Falls back to a monthly interval when no local Plan matches chip_price_id.
+     */
+    public function nextRenewalFrom(?Carbon $from = null): Carbon
+    {
+        $from = $from ? $from->copy() : Carbon::now();
+
+        $plan = $this->plan();
+        $interval = $plan?->interval ?? 'month';
+        $count = max(1, (int) ($plan?->interval_count ?? 1));
+
+        return match ($interval) {
+            'day' => $from->addDays($count),
+            'week' => $from->addWeeks($count),
+            'year' => $from->addYears($count),
+            default => $from->addMonths($count),
+        };
+    }
+
+    /**
+     * The start of the current billing period (renews_at minus one interval).
+     */
+    public function currentPeriodStart(): ?Carbon
+    {
+        if (! $this->renews_at) {
+            return null;
+        }
+
+        $plan = $this->plan();
+        $interval = $plan?->interval ?? 'month';
+        $count = max(1, (int) ($plan?->interval_count ?? 1));
+        $end = $this->renews_at->copy();
+
+        return match ($interval) {
+            'day' => $end->subDays($count),
+            'week' => $end->subWeeks($count),
+            'year' => $end->subYears($count),
+            default => $end->subMonths($count),
+        };
+    }
+
+    /**
+     * The renewal amount (cents) for a given price id, at the current quantity.
+     */
+    public function amountForPrice(string $priceId): int
+    {
+        $plan = Plan::where('chip_price_id', $priceId)->first() ?? Plan::find($priceId);
+
+        if ($plan) {
+            return (int) round(((float) $plan->price) * 100) * max(1, (int) ($this->quantity ?? 1));
+        }
+
+        $price = Price::find($priceId);
+
+        return $price ? $price->amount() : 0;
+    }
+
+    /**
+     * The current billing period boundaries (start = renews_at − one interval).
+     */
+    public function periodStart(): ?Carbon
+    {
+        return $this->currentPeriodStart();
+    }
+
+    public function periodEnd(): ?Carbon
+    {
+        return $this->renews_at;
+    }
+
+    /**
+     * Opt-in convenience over Proration::calculate() using this subscription's
+     * current period and amounts. Returns cents to settle for switching to
+     * $newPriceId now (> 0 owed, < 0 credit). It computes only — it does NOT
+     * charge, credit, or change the plan. You decide what to do with the number.
+     */
+    public function prorationFor(string $newPriceId, ?\DateTimeInterface $now = null): int
+    {
+        $start = $this->currentPeriodStart();
+
+        if (! $start || ! $this->renews_at) {
+            return 0;
+        }
+
+        return Proration::calculate(
+            $this->amount(),
+            $this->amountForPrice($newPriceId),
+            $start,
+            $this->renews_at,
+            $now
+        );
+    }
+
+    /**
+     * Scope to token-based subscriptions whose renewal is due and still billable.
+     *
+     * Cancelled subscriptions (ends_at set) are excluded — cancelling stops
+     * future charges while access runs to the period end.
+     */
+    public function scopeDueForRenewal($query, ?Carbon $now = null)
+    {
+        $now = $now ?? Carbon::now();
+
+        return $query->whereNull('ends_at')
+            ->whereNotNull('renews_at')
+            ->where('renews_at', '<=', $now)
+            ->whereIn('chip_status', ['active', 'past_due', 'trialing']);
     }
 
     /**
@@ -428,18 +540,11 @@ class Subscription extends Model
      */
     public function swap($priceId, array $options = []): self
     {
-        if ($this->hasChipId()) {
-            try {
-                $api = new \Aizuddinmanap\CashierChip\Http\ChipApi();
-                $api->updateSubscription($this->chip_id, array_merge([
-                    'price_id' => $priceId,
-                ], $options));
-            } catch (\Exception $e) {
-                \Log::warning('Failed to swap subscription via Chip API: ' . $e->getMessage());
-            }
-        }
-
-        $attributes = ['chip_price_id' => $priceId];
+        // Primitive: schedule the change for the next renewal. The current plan
+        // stays in effect until renews_at, then cashier:renew switches
+        // chip_price_id to the pending plan. No proration, no charge — that's a
+        // separate opt-in decision (see prorationFor() / swapAndInvoice()).
+        $attributes = ['pending_plan_id' => $priceId];
 
         if (isset($options['quantity'])) {
             $attributes['quantity'] = $options['quantity'];
@@ -453,13 +558,40 @@ class Subscription extends Model
     }
 
     /**
-     * Swap the subscription to a new price and immediately charge a renewal.
+     * Immediately switch the plan and charge for it now.
+     *
+     * Changes chip_price_id at once (clearing any pending change) and charges the
+     * saved token. By default it charges the new plan's full amount; pass
+     * ['amount' => n] — e.g. the result of prorationFor() — to charge a specific
+     * figure instead. A non-positive amount charges nothing (a token can't
+     * refund a downgrade credit; deciding what to do with it is up to you). The
+     * billing anchor (renews_at) is left unchanged.
      */
     public function swapAndInvoice($priceId, array $options = []): self
     {
-        $this->swap($priceId, $options);
+        $attributes = ['chip_price_id' => $priceId, 'pending_plan_id' => null];
 
-        $this->renew($options);
+        if (isset($options['quantity'])) {
+            $attributes['quantity'] = $options['quantity'];
+        }
+
+        $this->fill($attributes)->save();
+
+        event(new \Aizuddinmanap\CashierChip\Events\SubscriptionUpdated($this));
+
+        $owner = $this->owner()->first();
+        $amount = (int) ($options['amount'] ?? $this->amount());
+
+        if ($owner && $amount > 0) {
+            $owner->chargeWithToken(
+                $amount,
+                $options['description'] ?? ('Plan change: ' . $this->name),
+                [
+                    'reference' => $this->id,
+                    'currency' => $this->currency(),
+                ]
+            );
+        }
 
         return $this;
     }
@@ -480,7 +612,9 @@ class Subscription extends Model
             throw new \Exception('Subscription has no owner.');
         }
 
-        $amount = $this->amount();
+        // Allow the caller (cashier:renew) to override the amount, e.g. after
+        // applying a proration credit/debit from balance.
+        $amount = (int) ($options['amount'] ?? $this->amount());
 
         if ($amount <= 0) {
             throw new \Exception('Subscription has no billable amount.');
