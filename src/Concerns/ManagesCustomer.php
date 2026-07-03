@@ -32,35 +32,30 @@ trait ManagesCustomer
             return $value !== null;
         });
 
-        try {
-            // Create client via Chip API
-            $response = $api->createClient($clientData);
+        // Create the client via the Chip API. Any failure propagates — we must
+        // NOT persist a local placeholder id: a placeholder makes hasChipId()
+        // return true, so createAsChipCustomer() is never retried, and Chip then
+        // rejects every add_subscriber / token charge for a client it never saw.
+        // A failed create must leave chip_id null so the next call retries.
+        $response = $api->createClient($clientData);
 
-            $customer = new Customer([
-                'chip_id' => $response['id'],
-                'email' => $response['email'] ?? $clientData['email'],
-                'name' => $response['full_name'] ?? $clientData['full_name'],
-            ]);
-
-            // Store the Chip customer ID locally
-            $this->chip_id = $customer->chip_id;
-            $this->save();
-
-            return $customer;
-
-        } catch (\Exception $e) {
-            // Fallback to local customer creation if API fails
-            $customer = new Customer([
-                'chip_id' => 'cust_' . uniqid(),
-                'email' => $this->email ?? $options['email'] ?? null,
-                'name' => $this->name ?? $options['name'] ?? null,
-            ]);
-
-            $this->chip_id = $customer->chip_id;
-            $this->save();
-
-            return $customer;
+        if (empty($response['id'])) {
+            throw new \Aizuddinmanap\CashierChip\Exceptions\ChipApiException(
+                'Chip did not return a client id when creating the customer.'
+            );
         }
+
+        $customer = new Customer([
+            'chip_id' => $response['id'],
+            'email' => $response['email'] ?? $clientData['email'] ?? null,
+            'name' => $response['full_name'] ?? $clientData['full_name'] ?? null,
+        ]);
+
+        // Store the Chip customer ID locally
+        $this->chip_id = $customer->chip_id;
+        $this->save();
+
+        return $customer;
     }
 
     /**

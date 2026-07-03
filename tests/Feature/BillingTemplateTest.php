@@ -129,6 +129,26 @@ class BillingTemplateTest extends TestCase
     }
 
     #[Test]
+    public function add_subscriber_rejects_a_stale_placeholder_client_id(): void
+    {
+        // A "cust_" id is a local placeholder (real Chip client ids are UUIDs).
+        // Enrolling it would 400; fail fast with a clear message and send nothing.
+        $user = $this->createUser(['chip_id' => 'cust_stale']);
+        $template = new BillingTemplate(['id' => 'bt_1', 'is_subscription' => true]);
+
+        Http::fake();
+
+        try {
+            $user->subscribeToTemplate($template);
+            $this->fail('Expected InvalidArgumentException for a placeholder client id.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('chip_id', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    #[Test]
     public function adding_a_subscriber_to_a_trial_template_starts_trialing(): void
     {
         $user = $this->createUser(['chip_id' => 'client_123']);

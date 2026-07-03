@@ -209,8 +209,21 @@ class BillingTemplate
             $billable->createAsChipCustomer();
         }
 
+        $clientId = $billable->chipId();
+
+        // Real Chip client ids are UUIDs; a "cust_" id is a stale local placeholder
+        // from a run without API keys. Sending it would fail with "specify an
+        // existing Client's id" — surface a clear, actionable error instead.
+        if (! $clientId || str_starts_with($clientId, 'cust_')) {
+            throw new \InvalidArgumentException(
+                "Billable has no valid Chip client id (got '" . ($clientId ?? 'null') . "'). "
+                . 'This is usually a stale local placeholder created before API keys were set. '
+                . 'Clear the billable\'s chip_id so a real Chip client is created, then retry.'
+            );
+        }
+
         $client = array_merge(
-            ['client_id' => $billable->chipId()],
+            ['client_id' => $clientId],
             array_intersect_key($options, array_flip([
                 'payment_method_whitelist',
                 'send_invoice_on_charge_failure',

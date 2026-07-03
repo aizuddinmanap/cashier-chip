@@ -39,6 +39,25 @@ class BillableTest extends TestCase
     }
 
     #[Test]
+    public function failed_customer_creation_does_not_persist_a_placeholder_id(): void
+    {
+        // A failed createClient() must NOT save a local placeholder chip_id —
+        // otherwise hasChipId() returns true, the client is never re-created, and
+        // Chip rejects every future add_subscriber / charge. chip_id must stay
+        // null so the next call retries.
+        $this->mockChipApiError(401, 'Unauthorized');
+
+        try {
+            $this->user->createAsChipCustomer();
+            $this->fail('Expected an exception when Chip client creation fails.');
+        } catch (\Throwable $e) {
+            // expected
+        }
+
+        $this->assertFalse($this->user->fresh()->hasChipId());
+    }
+
+    #[Test]
     public function it_can_update_chip_customer(): void
     {
         $this->user->update(['chip_id' => 'client_123']);
