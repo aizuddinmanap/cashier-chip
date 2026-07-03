@@ -154,6 +154,8 @@ Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (fa
 
 Each token-based subscription records a `renews_at`. The bundled `cashier:renew` command charges only the subscriptions that are **actually due**, advances `renews_at` by one interval on success, and marks `past_due` (retried after the grace period, with a `SubscriptionChargeFailed` event) on failure. Subscriptions due with no saved token are flagged `requires_payment_method` and surfaced via the same event, so you can tell "needs a card" apart from "card declined." Renewals run inside a per-subscription cache lock and re-check `renews_at` under the lock, so overlapping runs can't double-charge. Just schedule it:
 
+A subscription also carries explicit `current_period_start` / `current_period_end` columns, written on creation and re-anchored to the actual charged period on every successful renewal (`[old renews_at, new renews_at]`). Read them via `$sub->periodStart()` / `periodEnd()` (or `currentPeriodStart()`); for legacy rows that predate the columns they fall back to the derived `renews_at − one interval`. These are the authoritative period for proration (`prorationFor()`) and "renews on X" UI.
+
 ```php
 // routes/console.php
 use Illuminate\Support\Facades\Schedule;

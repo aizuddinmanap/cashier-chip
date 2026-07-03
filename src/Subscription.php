@@ -25,6 +25,8 @@ class Subscription extends Model
         'paused_at' => 'datetime',
         'ends_at' => 'datetime',
         'renews_at' => 'datetime',
+        'current_period_start' => 'datetime',
+        'current_period_end' => 'datetime',
     ];
 
     /**
@@ -95,9 +97,26 @@ class Subscription extends Model
     }
 
     /**
-     * The start of the current billing period (renews_at minus one interval).
+     * The start of the current billing period.
+     *
+     * Prefers the persisted current_period_start (an authoritative record of
+     * the actual charged period, written whenever renews_at advances). Falls
+     * back to renews_at minus one interval for legacy rows where the column
+     * is null.
      */
     public function currentPeriodStart(): ?Carbon
+    {
+        if ($this->current_period_start) {
+            return $this->current_period_start->copy();
+        }
+
+        return $this->computedPeriodStart();
+    }
+
+    /**
+     * Derive the period start from renews_at minus one plan interval.
+     */
+    protected function computedPeriodStart(): ?Carbon
     {
         if (! $this->renews_at) {
             return null;
@@ -133,7 +152,10 @@ class Subscription extends Model
     }
 
     /**
-     * The current billing period boundaries (start = renews_at − one interval).
+     * The current billing period boundaries.
+     *
+     * Prefer the persisted columns (authoritative); fall back to the derived
+     * renews_at values for legacy rows.
      */
     public function periodStart(): ?Carbon
     {
@@ -142,7 +164,7 @@ class Subscription extends Model
 
     public function periodEnd(): ?Carbon
     {
-        return $this->renews_at;
+        return $this->current_period_end ?? $this->renews_at;
     }
 
     /**

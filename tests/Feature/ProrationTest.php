@@ -133,4 +133,43 @@ class ProrationTest extends TestCase
         $this->assertDatabaseHas('transactions', ['chip_id' => 'purchase_r', 'total' => 3000, 'status' => 'success']);
         Event::assertDispatched(SubscriptionRenewed::class);
     }
+
+    #[Test]
+    public function proration_for_uses_persisted_period_columns_and_falls_back_to_derived(): void
+    {
+        $renewsAt = Carbon::now()->addDays(15);
+        $derivedStart = Carbon::now()->subDays(15);   // renews_at minus one month
+
+        // Legacy row: no period columns → currentPeriodStart() derives renews_at − interval.
+        $legacy = $this->subscription('price_basic', ['renews_at' => $renewsAt]);
+        $this->assertNull($legacy->current_period_start);
+
+        // Migrated row: period columns populated to the SAME window the derived
+        // value would compute, so proration is identical.
+        $migrated = $this->subscription('price_basic', [
+            'renews_at' => $renewsAt,
+            'current_period_start' => $derivedStart,
+            'current_period_end' => $renewsAt,
+        ]);
+
+        $this->assertEquals(
+            $legacy->prorationFor('price_pro'),
+            $migrated->prorationFor('price_pro'),
+            'proration must be identical whether the period is persisted or derived'
+        );
+
+        // And a migrated row with a DIFFERENT persisted window must honor it,
+        // not the derived value — that's the whole point of persisting.
+        $shifted = $this->subscription('price_basic', [
+            'renews_at' => $renewsAt,
+            'current_period_start' => Carbon::now()->subDays(1),   // only 1 day in
+            'current_period_end' => $renewsAt,
+        ]);
+
+        $this->assertNotEquals(
+            $legacy->prorationFor('price_pro'),
+            $shifted->prorationFor('price_pro'),
+            'persisted period window must override the derived renews_at − interval'
+        );
+    }
 }

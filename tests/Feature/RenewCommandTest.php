@@ -67,6 +67,7 @@ class RenewCommandTest extends TestCase
         ]);
 
         $sub = $this->makeDueSubscription();
+        $oldRenewsAt = $sub->renews_at->copy();
 
         $this->artisan('cashier:renew')->assertSuccessful();
 
@@ -74,6 +75,10 @@ class RenewCommandTest extends TestCase
         $this->assertEquals('active', $sub->chip_status);
         $this->assertTrue($sub->renews_at->isFuture());
         $this->assertDatabaseHas('transactions', ['chip_id' => 'purchase_r1', 'status' => 'success']);
+
+        // The period just paid for is recorded explicitly: [old renews_at, new renews_at].
+        $this->assertEquals($oldRenewsAt->timestamp, $sub->current_period_start->timestamp);
+        $this->assertEquals($sub->renews_at->timestamp, $sub->current_period_end->timestamp);
     }
 
     #[Test]
@@ -199,6 +204,7 @@ class RenewCommandTest extends TestCase
         ]);
 
         $sub = $this->makeDueSubscription();
+        $oldRenewsAt = $sub->renews_at->copy();
 
         $command = new \Aizuddinmanap\CashierChip\Console\Commands\RenewCommand();
         $command->setLaravel(app());
@@ -209,5 +215,9 @@ class RenewCommandTest extends TestCase
         $this->assertSame('renewed', $outcome['status']);
         $this->assertTrue($sub->refresh()->renews_at->isFuture());
         $this->assertDatabaseHas('transactions', ['chip_id' => 'purchase_r4', 'status' => 'success']);
+
+        // Period columns record the actual charged period.
+        $this->assertEquals($oldRenewsAt->timestamp, $sub->current_period_start->timestamp);
+        $this->assertEquals($sub->renews_at->timestamp, $sub->current_period_end->timestamp);
     }
 }

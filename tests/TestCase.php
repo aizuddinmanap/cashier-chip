@@ -85,6 +85,8 @@ abstract class TestCase extends Orchestra
             $table->timestamp('paused_at')->nullable();
             $table->timestamp('ends_at')->nullable();
             $table->timestamp('renews_at')->nullable();
+            $table->timestamp('current_period_start')->nullable();
+            $table->timestamp('current_period_end')->nullable();
             $table->timestamps();
 
             $table->index(['user_id', 'chip_status']);

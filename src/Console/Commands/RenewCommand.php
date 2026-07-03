@@ -181,9 +181,17 @@ class RenewCommand extends Command
         }
 
         if ($charged) {
+            // Capture the period just paid for (current renews_at) before
+            // advancing, then record [old renews_at, new renews_at] as the
+            // authoritative current_period_start/end.
+            $oldRenewsAt = $subscription->renews_at;
+            $newRenewsAt = $subscription->nextRenewalFrom($now);
+
             $subscription->update([
                 'chip_status' => 'active',
-                'renews_at' => $subscription->nextRenewalFrom($now),
+                'renews_at' => $newRenewsAt,
+                'current_period_start' => $oldRenewsAt,
+                'current_period_end' => $newRenewsAt,
             ]);
             Event::dispatch(new SubscriptionRenewed($subscription, $transaction));
 

@@ -743,6 +743,10 @@ class WebhookController extends Controller
 
         // Schedule the first token-based renewal one interval out (cashier:renew).
         $subscription->renews_at = $subscription->nextRenewalFrom();
+
+        // Record the first billing period explicitly (start = now, end = renews_at).
+        $subscription->current_period_start = Carbon::now();
+        $subscription->current_period_end = $subscription->renews_at;
         $subscription->save();
     }
 

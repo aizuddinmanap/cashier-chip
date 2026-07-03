@@ -185,6 +185,13 @@ class SubscriptionBuilder
         // Schedule the first renewal: at trial end if trialing, else one interval
         // out. cashier:renew charges token-based subscriptions when this passes.
         $subscription->renews_at = $subscription->trial_ends_at ?? $subscription->nextRenewalFrom();
+
+        // Record the first billing period explicitly (start = now for a fresh
+        // paid sub, or the trial's start anchor; end = renews_at). This is the
+        // authoritative period record; readers fall back to renews_at − interval
+        // when these columns are null.
+        $subscription->current_period_start = Carbon::now();
+        $subscription->current_period_end = $subscription->renews_at;
         $subscription->save();
 
         // If a PaymentMethod model was provided, make it the default.
@@ -272,6 +279,8 @@ class SubscriptionBuilder
      */
     protected function createTrialSubscription(array $options = []): Subscription
     {
+        $trialStart = Carbon::now();
+
         return $this->billable->subscriptions()->create([
             'name' => $this->name,
             'chip_id' => 'trial_' . uniqid(),
@@ -282,6 +291,9 @@ class SubscriptionBuilder
             'ends_at' => null,
             // First charge is attempted when the trial ends.
             'renews_at' => $this->trialEnds,
+            // Trial period: now until trial_ends_at.
+            'current_period_start' => $trialStart,
+            'current_period_end' => $this->trialEnds,
         ]);
     }
 
