@@ -42,9 +42,17 @@ class Product
     public function __construct(array $attributes = [])
     {
         foreach ($attributes as $key => $value) {
-            if (property_exists($this, $key)) {
-                $this->{$key} = $value;
+            if (! property_exists($this, $key)) {
+                continue;
             }
+
+            // Chip returns price/quantity as strings; cast back so hydrating an
+            // API response into the typed int properties doesn't throw.
+            if (($key === 'price' || $key === 'quantity') && $value !== null) {
+                $value = (int) $value;
+            }
+
+            $this->{$key} = $value;
         }
     }
 

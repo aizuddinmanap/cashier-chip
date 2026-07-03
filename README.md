@@ -148,12 +148,20 @@ use Aizuddinmanap\CashierChip\Models\BillingTemplate;
 $template = BillingTemplate::create([
     'title' => 'Monthly Subscription',
     'is_subscription' => true,
+
+    // All of these are required by CHIP for a subscription template
+    // (validated against the live API):
     'subscription_period' => 1,
-    'subscription_period_units' => 'months',  // days | weeks | months (plural; no "year" — use 12 months)
-    'subscription_trial_periods' => 0,
+    'subscription_period_units' => 'months',      // days | weeks | months (plural; no "year" — use 12 months)
+    'subscription_due_period' => 7,
+    'subscription_due_period_units' => 'days',     // days | weeks | months
+    'subscription_charge_period_end' => false,     // true = charge at end of the cycle instead of the start
+    'subscription_trial_periods' => 0,             // e.g. 2 = two free periods before the first charge
+    'subscription_active' => true,                 // false pauses billing for every subscriber
+
     'purchase' => [
         'currency' => 'MYR',
-        'products' => [['name' => 'Pro plan', 'price' => 5000, 'quantity' => 1]],
+        'products' => [['name' => 'Pro plan', 'price' => 5000, 'quantity' => 1]], // price in cents
     ],
 ]);
 

@@ -77,6 +77,29 @@ class BillingTemplateTest extends TestCase
     }
 
     #[Test]
+    public function it_hydrates_a_response_with_string_priced_products(): void
+    {
+        // Chip returns price/quantity as strings; hydrating the response into the
+        // typed int properties must not throw under strict_types.
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/billing_templates/' => Http::response([
+                'id' => 'bt_hydrate',
+                'is_subscription' => true,
+                'purchase' => [
+                    'currency' => 'MYR',
+                    'products' => [['name' => 'Pro', 'price' => '5000', 'quantity' => '2']],
+                ],
+            ]),
+        ]);
+
+        $template = BillingTemplate::create(['title' => 'X', 'is_subscription' => true]);
+
+        $product = $template->purchase->products[0];
+        $this->assertSame(5000, $product->price);
+        $this->assertSame(2, $product->quantity);
+    }
+
+    #[Test]
     public function a_user_can_subscribe_to_a_template(): void
     {
         $user = $this->createUser(['chip_id' => 'client_123']);
