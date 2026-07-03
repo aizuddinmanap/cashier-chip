@@ -219,10 +219,12 @@ class ChipApiTest extends TestCase
 
         $this->assertEquals($expectedResponse, $result);
 
-        // Chip's API (DRF, APPEND_SLASH) 404s a POST without the trailing slash.
+        // Chip's API (DRF, APPEND_SLASH) 404s a POST without the trailing slash,
+        // and a client must be created under the configured brand.
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
-                && str_ends_with($request->url(), '/clients/');
+                && str_ends_with($request->url(), '/clients/')
+                && ($request['brand_id'] ?? null) === 'test_brand';
         });
     }
 

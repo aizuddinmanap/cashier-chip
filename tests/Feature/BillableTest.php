@@ -58,6 +58,28 @@ class BillableTest extends TestCase
     }
 
     #[Test]
+    public function it_reuses_an_existing_chip_client_on_duplicate_email(): void
+    {
+        // Chip rejects a duplicate email (clients_unique_email); createAsChipCustomer
+        // must look the existing client up and reuse it instead of failing.
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/clients/?q=*' => Http::response([
+                'results' => [
+                    ['id' => 'client_existing', 'email' => 'test@example.com'],
+                ],
+            ]),
+            'api.test.chip-in.asia/api/v1/clients/' => Http::response([
+                'email' => ['clients_unique_email'],
+            ], 400),
+        ]);
+
+        $customer = $this->user->createAsChipCustomer();
+
+        $this->assertEquals('client_existing', $customer->chipId());
+        $this->assertEquals('client_existing', $this->user->fresh()->chip_id);
+    }
+
+    #[Test]
     public function it_can_update_chip_customer(): void
     {
         $this->user->update(['chip_id' => 'client_123']);

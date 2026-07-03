@@ -253,6 +253,13 @@ class ChipApi
      */
     public function createClient(array $data): array
     {
+        // Clients must be created under the configured brand. A brand-less client
+        // can't be enrolled on a brand-scoped billing template — Chip then reports
+        // a misleading "client_id invalid". Mirrors createPurchase/createBillingTemplate.
+        if (! isset($data['brand_id'])) {
+            $data['brand_id'] = $this->brandId;
+        }
+
         return $this->post('clients/', $data);
     }
 

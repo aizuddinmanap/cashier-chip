@@ -32,12 +32,11 @@ trait ManagesCustomer
             return $value !== null;
         });
 
-        // Create the client via the Chip API. Any failure propagates — we must
-        // NOT persist a local placeholder id: a placeholder makes hasChipId()
-        // return true, so createAsChipCustomer() is never retried, and Chip then
-        // rejects every add_subscriber / token charge for a client it never saw.
-        // A failed create must leave chip_id null so the next call retries.
-        $response = $api->createClient($clientData);
+        // Create the client (reusing an existing one if the email already
+        // exists). Any other failure propagates — we must NOT persist a local
+        // placeholder id: that makes hasChipId() true, so the client is never
+        // re-created and Chip rejects every later add_subscriber / charge.
+        $response = $this->createOrReuseChipClient($api, $clientData);
 
         if (empty($response['id'])) {
             throw new \Aizuddinmanap\CashierChip\Exceptions\ChipApiException(
@@ -56,6 +55,53 @@ trait ManagesCustomer
         $this->save();
 
         return $customer;
+    }
+
+    /**
+     * Create the Chip client, or reuse an existing one on a duplicate email.
+     *
+     * Chip rejects a second client with the same email (clients_unique_email).
+     * Rather than failing, look the existing client up and reuse its id. Any
+     * other API failure propagates (we never fabricate a local id).
+     */
+    protected function createOrReuseChipClient(\Aizuddinmanap\CashierChip\Http\ChipApi $api, array $clientData): array
+    {
+        try {
+            return $api->createClient($clientData);
+        } catch (\Aizuddinmanap\CashierChip\Exceptions\ChipApiException $e) {
+            $email = $clientData['email'] ?? null;
+
+            if (! $email || ! str_contains($e->getMessage(), 'clients_unique_email')) {
+                throw $e;
+            }
+
+            $existing = $this->findChipClientByEmail($api, $email);
+
+            if ($existing === null || empty($existing['id'])) {
+                throw $e;
+            }
+
+            return $existing;
+        }
+    }
+
+    /**
+     * Find an existing Chip client by exact email match.
+     */
+    protected function findChipClientByEmail(\Aizuddinmanap\CashierChip\Http\ChipApi $api, string $email): ?array
+    {
+        $results = $api->searchClientsByEmail($email);
+
+        // Chip returns a paginated list; accept results/data/plain-list shapes.
+        $rows = $results['results'] ?? $results['data'] ?? (array_is_list($results) ? $results : []);
+
+        foreach ($rows as $row) {
+            if (! empty($row['id']) && strcasecmp((string) ($row['email'] ?? ''), $email) === 0) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -148,12 +148,11 @@ trait Billable
             return $value !== null;
         });
 
-        // Create the client via the Chip API. Any failure propagates — we must
-        // NOT persist a local placeholder id: a placeholder makes hasChipId()
-        // return true, so createAsChipCustomer() is never retried, and Chip then
-        // rejects every add_subscriber / token charge for a client it never saw.
-        // A failed create must leave chip_id null so the next call retries.
-        $response = $api->createClient($clientData);
+        // Create the client (reusing an existing one if the email already
+        // exists). Any other failure propagates — we must NOT persist a local
+        // placeholder id: that makes hasChipId() true, so the client is never
+        // re-created and Chip rejects every later add_subscriber / charge.
+        $response = $this->createOrReuseChipClient($api, $clientData);
 
         if (empty($response['id'])) {
             throw new \Aizuddinmanap\CashierChip\Exceptions\ChipApiException(
