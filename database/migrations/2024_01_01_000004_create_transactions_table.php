@@ -27,7 +27,6 @@ return new class extends Migration
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
 
-            $table->index(['billable_type', 'billable_id']);
             $table->index(['customer_id']);
             $table->index(['status']);
             $table->index(['type']);

@@ -66,7 +66,7 @@ trait Billable
      */
     public function subscribed(?string $name = null, ?string $priceId = null): bool
     {
-        $subscription = $this->subscription($name);
+        $subscription = $this->subscription($name ?? 'default');
 
         if (! $subscription || ! $subscription->valid()) {
             return false;
