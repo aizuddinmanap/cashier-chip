@@ -78,6 +78,7 @@ abstract class TestCase extends Orchestra
             $table->string('chip_id')->unique();
             $table->string('chip_status');
             $table->string('chip_price_id')->nullable();
+            $table->string('chip_billing_template_id')->nullable();
             $table->integer('quantity')->nullable();
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamp('paused_at')->nullable();

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Tests\Feature;
 
+use Aizuddinmanap\CashierChip\Events\SubscriptionChargeFailed;
 use Aizuddinmanap\CashierChip\PaymentMethod;
 use Aizuddinmanap\CashierChip\Subscription;
 use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
 use Aizuddinmanap\CashierChip\Transaction;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\Test;
 
 class WebhookControllerTest extends TestCase
@@ -81,6 +83,57 @@ class WebhookControllerTest extends TestCase
         $response->assertStatus(200);
         $this->assertEquals('success', $transaction->fresh()->status);
         $this->assertNotNull($transaction->fresh()->processed_at);
+    }
+
+    #[Test]
+    public function subscription_charge_failure_marks_subscription_past_due(): void
+    {
+        Event::fake([SubscriptionChargeFailed::class]);
+
+        $subscription = $this->user->subscriptions()->create([
+            'name' => 'default',
+            'chip_id' => 'btc_fail_1',
+            'chip_billing_template_id' => 'bt_fail',
+            'chip_status' => 'active',
+            'quantity' => 1,
+        ]);
+
+        $response = $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.subscription_charge_failure',
+            'id' => 'purchase_fail_1',
+            'billing_template_id' => 'bt_fail',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals('past_due', $subscription->fresh()->chip_status);
+        Event::assertDispatched(SubscriptionChargeFailed::class);
+    }
+
+    #[Test]
+    public function subscription_cycle_charge_reactivates_and_records_transaction(): void
+    {
+        $subscription = $this->user->subscriptions()->create([
+            'name' => 'default',
+            'chip_id' => 'btc_ok_1',
+            'chip_billing_template_id' => 'bt_ok',
+            'chip_status' => 'past_due',
+            'quantity' => 1,
+        ]);
+
+        $response = $this->postJson('/chip/webhook', [
+            'event_type' => 'purchase.paid',
+            'id' => 'purchase_cycle_1',
+            'billing_template_id' => 'bt_ok',
+            'purchase' => ['total' => 5000, 'currency' => 'MYR'],
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals('active', $subscription->fresh()->chip_status);
+        $this->assertDatabaseHas('transactions', [
+            'chip_id' => 'purchase_cycle_1',
+            'total' => 5000,
+            'status' => 'success',
+        ]);
     }
 
     #[Test]

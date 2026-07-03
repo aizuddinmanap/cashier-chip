@@ -366,4 +366,68 @@ class ChipApiTest extends TestCase
 
         $this->assertEquals('purchase_log_1', $result['id']);
     }
+
+    #[Test]
+    public function it_can_create_a_billing_template(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/billing_templates/' => Http::response([
+                'id' => 'bt_123',
+                'title' => 'Monthly Subscription',
+                'is_subscription' => true,
+            ]),
+        ]);
+
+        $result = $this->api->createBillingTemplate([
+            'title' => 'Monthly Subscription',
+            'is_subscription' => true,
+        ]);
+
+        $this->assertEquals('bt_123', $result['id']);
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && str_ends_with($request->url(), '/billing_templates/')
+                && $request['title'] === 'Monthly Subscription'
+                && $request['is_subscription'] === true;
+        });
+    }
+
+    #[Test]
+    public function it_can_get_and_delete_a_billing_template(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/billing_templates/bt_123/' => Http::response(['id' => 'bt_123']),
+        ]);
+
+        $this->assertEquals('bt_123', $this->api->getBillingTemplate('bt_123')['id']);
+        $this->api->deleteBillingTemplate('bt_123');
+
+        Http::assertSent(fn ($r) => $r->method() === 'GET' && str_ends_with($r->url(), '/billing_templates/bt_123/'));
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/billing_templates/bt_123/'));
+    }
+
+    #[Test]
+    public function it_can_add_a_subscriber_to_a_billing_template(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/billing_templates/bt_123/add_subscriber/' => Http::response([
+                'id' => 'btc_1',
+                'client_id' => 'client_123',
+                'status' => 'active',
+            ]),
+        ]);
+
+        $result = $this->api->addSubscriber('bt_123', [
+            'billing_template_client' => ['client_id' => 'client_123'],
+        ]);
+
+        $this->assertEquals('btc_1', $result['id']);
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && str_ends_with($request->url(), '/billing_templates/bt_123/add_subscriber/')
+                && ($request['billing_template_client']['client_id'] ?? null) === 'client_123';
+        });
+    }
 } 

@@ -132,6 +132,11 @@ class WebhookController extends Controller
             'purchase.hold' => 'handlePurchaseHold',
             'purchase.pending_charge' => 'handlePurchasePendingCharge',
 
+            // Billing-template subscription recurring-charge failure. Chip emits
+            // this when an automatic subscription charge fails; it also mails the
+            // client a payable invoice. Mirrors the subscription to past_due.
+            'purchase.subscription_charge_failure' => 'handleSubscriptionChargeFailure',
+
             // Subscription lifecycle. Chip has no native subscription.* webhooks —
             // subscriptions are derived from purchase.paid (see
             // maybeCreateSubscriptionFromPurchase) — but these handlers remain
@@ -187,7 +192,12 @@ class WebhookController extends Controller
         }
 
         // Subscription notifications are keyed on a subscription id, not a purchase.
-        if (str_starts_with($payload['event_type'] ?? '', 'subscription.')) {
+        // The subscription-charge-failure event must keep its event_type too — the
+        // failed purchase's authoritative status ("error") would otherwise remap it
+        // to a generic purchase.payment_failure and skip the subscription handler.
+        $eventType = $payload['event_type'] ?? '';
+
+        if (str_starts_with($eventType, 'subscription.') || $eventType === 'purchase.subscription_charge_failure') {
             return [$payload, false];
         }
 
@@ -295,6 +305,10 @@ class WebhookController extends Controller
 
         // If this is a subscription checkout, create the subscription record
         $this->maybeCreateSubscriptionFromPurchase($payload);
+
+        // If this is a Chip billing-template (native subscription) cycle charge,
+        // keep the mirrored subscription active and record the renewal.
+        $this->maybeSyncTemplateSubscription($payload);
     }
 
     /**
@@ -523,6 +537,139 @@ class WebhookController extends Controller
                 'ends_at' => now(),
             ]);
         }
+    }
+
+    /**
+     * Handle purchase.subscription_charge_failure (billing-template subscription).
+     *
+     * Chip fires this when an automatic subscription charge fails (it also emails
+     * the client a payable invoice). Mirror the subscription to past_due so the
+     * app can react, and clean up an invalid recurring token if one was flagged.
+     */
+    protected function handleSubscriptionChargeFailure(array $payload): void
+    {
+        $this->maybeDeleteInvalidToken($payload);
+
+        $subscription = $this->resolveTemplateSubscription($payload);
+
+        if (! $subscription) {
+            return;
+        }
+
+        if ($subscription->chip_status !== 'past_due') {
+            $subscription->update(['chip_status' => 'past_due']);
+        }
+
+        Event::dispatch(new \Aizuddinmanap\CashierChip\Events\SubscriptionChargeFailed($subscription, $payload));
+    }
+
+    /**
+     * On a successful billing-template cycle charge, keep the mirrored
+     * subscription active (recovering from trial/past_due) and record the charge.
+     */
+    protected function maybeSyncTemplateSubscription(array $payload): void
+    {
+        $subscription = $this->resolveTemplateSubscription($payload);
+
+        if (! $subscription) {
+            return;
+        }
+
+        if (in_array($subscription->chip_status, ['past_due', 'trialing'], true)) {
+            $subscription->update(['chip_status' => 'active']);
+        }
+
+        $this->maybeRecordTemplateCharge($payload, $subscription);
+    }
+
+    /**
+     * Record a transaction for a Chip-initiated subscription cycle charge.
+     *
+     * Charges we initiate ourselves already have a local transaction that
+     * handlePurchasePaid transitions; Chip-initiated recurring charges do not, so
+     * create one here (idempotently, keyed on the purchase id).
+     */
+    protected function maybeRecordTemplateCharge(array $payload, \Aizuddinmanap\CashierChip\Subscription $subscription): void
+    {
+        $purchaseId = $payload['id'] ?? null;
+
+        if (! $purchaseId) {
+            return;
+        }
+
+        if (\Aizuddinmanap\CashierChip\Transaction::where('chip_id', $purchaseId)->exists()) {
+            return;
+        }
+
+        $billable = $subscription->owner;
+
+        if (! $billable) {
+            return;
+        }
+
+        $total = $payload['purchase']['total'] ?? $payload['payment']['amount'] ?? null;
+
+        if ($total === null) {
+            return;
+        }
+
+        $currency = strtoupper($payload['purchase']['currency'] ?? config('cashier.currency', 'MYR'));
+
+        $transaction = $billable->transactions()->create([
+            'id' => 'txn_' . uniqid(),
+            'chip_id' => $purchaseId,
+            'total' => (int) $total,
+            'currency' => $currency,
+            'status' => 'success',
+            'type' => 'charge',
+            'description' => 'Subscription charge',
+            'payment_method' => $payload['transaction_data']['payment_method'] ?? 'recurring_token',
+            'processed_at' => now(),
+            'metadata' => [
+                'billing_template_id' => $subscription->chip_billing_template_id,
+            ],
+        ]);
+
+        Event::dispatch(new \Aizuddinmanap\CashierChip\Events\TransactionCompleted($transaction));
+    }
+
+    /**
+     * Resolve the mirrored subscription for a billing-template purchase payload.
+     */
+    protected function resolveTemplateSubscription(array $payload): ?\Aizuddinmanap\CashierChip\Subscription
+    {
+        $templateId = $this->resolveTemplateIdFromPayload($payload);
+
+        if (! $templateId) {
+            return null;
+        }
+
+        $billable = $this->resolveBillableFromPayload($payload);
+
+        if ($billable) {
+            return $billable->subscriptions()
+                ->where('chip_billing_template_id', $templateId)
+                ->latest('id')
+                ->first();
+        }
+
+        return \Aizuddinmanap\CashierChip\Subscription::where('chip_billing_template_id', $templateId)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Extract a Chip billing template id from a purchase webhook payload.
+     */
+    protected function resolveTemplateIdFromPayload(array $payload): ?string
+    {
+        $templateId = $payload['billing_template_id']
+            ?? $payload['purchase']['billing_template_id']
+            ?? $payload['billing_template']['id']
+            ?? $payload['subscription']['billing_template_id']
+            ?? null;
+
+        return $templateId !== null ? (string) $templateId : null;
     }
 
     /**

@@ -364,6 +364,10 @@ class ChipApi
 
     /**
      * Create a subscription via Chip API.
+     *
+     * @deprecated Chip has no documented top-level /subscriptions/ endpoint.
+     *             Use the Billing Template API (createBillingTemplate() +
+     *             addSubscriber()) for native recurring billing instead.
      */
     public function createSubscription(array $data): array
     {
@@ -372,6 +376,8 @@ class ChipApi
 
     /**
      * Cancel a subscription via Chip API.
+     *
+     * @deprecated See createSubscription(); prefer the Billing Template API.
      */
     public function cancelSubscription(string $subscriptionId, array $data = []): array
     {
@@ -380,6 +386,8 @@ class ChipApi
 
     /**
      * Update a subscription via Chip API.
+     *
+     * @deprecated See createSubscription(); prefer the Billing Template API.
      */
     public function updateSubscription(string $subscriptionId, array $data): array
     {
@@ -388,10 +396,80 @@ class ChipApi
 
     /**
      * Get a subscription via Chip API.
+     *
+     * @deprecated See createSubscription(); prefer the Billing Template API.
      */
     public function getSubscription(string $subscriptionId): array
     {
         return $this->get("subscriptions/{$subscriptionId}");
+    }
+
+    /**
+     * Create a billing template via Chip API.
+     *
+     * A billing template with is_subscription=true is Chip's native recurring
+     * engine: Chip performs the billing-cycle math, auto-charges the tokenized
+     * card each cycle, handles trials/dunning, and emails receipts server-side.
+     */
+    public function createBillingTemplate(array $data): array
+    {
+        if (! isset($data['brand_id'])) {
+            $data['brand_id'] = $this->brandId;
+        }
+
+        return $this->post('billing_templates/', $data);
+    }
+
+    /**
+     * List billing templates via Chip API.
+     */
+    public function getBillingTemplates(array $query = []): array
+    {
+        return $this->get('billing_templates/', $query);
+    }
+
+    /**
+     * Get a single billing template via Chip API.
+     */
+    public function getBillingTemplate(string $templateId): array
+    {
+        return $this->get("billing_templates/{$templateId}/");
+    }
+
+    /**
+     * Update a billing template via Chip API.
+     */
+    public function updateBillingTemplate(string $templateId, array $data): array
+    {
+        return $this->put("billing_templates/{$templateId}/", $data);
+    }
+
+    /**
+     * Delete a billing template via Chip API.
+     */
+    public function deleteBillingTemplate(string $templateId): array
+    {
+        return $this->delete("billing_templates/{$templateId}/");
+    }
+
+    /**
+     * Add a subscriber to a billing template via Chip API.
+     *
+     * The body carries a billing_template_client (with the Chip client_id) and
+     * an optional purchase override. For a subscription template this enrolls
+     * the client so Chip charges them automatically each cycle.
+     */
+    public function addSubscriber(string $templateId, array $data): array
+    {
+        return $this->post("billing_templates/{$templateId}/add_subscriber/", $data);
+    }
+
+    /**
+     * Send an invoice for a (non-subscription) billing template to a client.
+     */
+    public function sendBillingTemplateInvoice(string $templateId, array $data): array
+    {
+        return $this->post("billing_templates/{$templateId}/send_invoice/", $data);
     }
 
     /**

@@ -11,7 +11,7 @@ class Cashier
     /**
      * The Cashier library version.
      */
-    public static string $version = '1.3.0';
+    public static string $version = '1.4.0';
 
     /**
      * Indicates if Cashier routes will be registered.
@@ -39,6 +39,11 @@ class Cashier
     protected static $formatCurrencyUsing;
 
     /**
+     * The shared Billing Template manager instance.
+     */
+    protected static ?Billing $billing = null;
+
+    /**
      * The customer model class name.
      */
     public static string $customerModel = 'Aizuddinmanap\\CashierChip\\Customer';
@@ -62,6 +67,22 @@ class Cashier
      * The payment method model class name.
      */
     public static string $paymentMethodModel = 'Aizuddinmanap\\CashierChip\\PaymentMethod';
+
+    /**
+     * Get the shared Billing Template manager.
+     */
+    public static function billing(): Billing
+    {
+        return static::$billing ??= new Billing();
+    }
+
+    /**
+     * Get a lightweight Chip client facade ($chip->billing->...).
+     */
+    public static function client(): Chip
+    {
+        return new Chip();
+    }
 
     /**
      * Get the default currency used by Cashier.

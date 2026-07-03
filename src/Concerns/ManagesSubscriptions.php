@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Concerns;
 
+use Aizuddinmanap\CashierChip\Models\BillingTemplate;
 use Aizuddinmanap\CashierChip\Subscription;
 use Aizuddinmanap\CashierChip\SubscriptionBuilder;
 
@@ -15,6 +16,22 @@ trait ManagesSubscriptions
     public function newSubscription(string $name, string $plan): SubscriptionBuilder
     {
         return new SubscriptionBuilder($this, $name, $plan);
+    }
+
+    /**
+     * Subscribe this billable to a Chip billing template (native recurring).
+     *
+     * Chip drives the billing cycle, auto-charges, trials, dunning and receipts
+     * server-side. A local subscription row is mirrored so the rest of Cashier
+     * ($this->subscriptions, ->subscribedToPlan, ->cancel, etc.) keeps working.
+     */
+    public function subscribeToTemplate(BillingTemplate|string $template, array $options = []): Subscription
+    {
+        if (is_string($template)) {
+            $template = BillingTemplate::find($template);
+        }
+
+        return $template->addSubscriber($this, $options);
     }
 
     /**
