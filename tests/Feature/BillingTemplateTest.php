@@ -47,6 +47,34 @@ class BillingTemplateTest extends TestCase
     }
 
     #[Test]
+    public function it_accepts_the_documented_subscription_fields(): void
+    {
+        // Mirrors CHIP's docs: is_subscription + subscription_* fields, with
+        // subscription_charge_period_end set to `true` (the docs' literal example)
+        // and a trial via subscription_trial_periods.
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/billing_templates/' => Http::response(['id' => 'bt_docs']),
+        ]);
+
+        BillingTemplate::create([
+            'title' => 'End-of-cycle Subscription',
+            'is_subscription' => true,
+            'subscription_period' => 1,
+            'subscription_period_units' => 'month',
+            'subscription_charge_period_end' => true,
+            'subscription_trial_periods' => 2,
+            'purchase' => ['currency' => 'MYR', 'products' => [['name' => 'Pro', 'price' => 5000]]],
+        ]);
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/billing_templates/')
+                && $request['is_subscription'] === true
+                && $request['subscription_charge_period_end'] === true
+                && $request['subscription_trial_periods'] === 2;
+        });
+    }
+
+    #[Test]
     public function a_user_can_subscribe_to_a_template(): void
     {
         $user = $this->createUser(['chip_id' => 'client_123']);

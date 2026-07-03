@@ -51,8 +51,12 @@ class BillingTemplate
     /** Units for subscription_due_period. */
     public ?string $subscription_due_period_units = null;
 
-    /** Charge at the end of the billing cycle rather than the start. */
-    public ?int $subscription_charge_period_end = null;
+    /**
+     * Charge at the end of the billing cycle rather than the start.
+     *
+     * CHIP's docs show `true`; the SDK types it int. Accept both and pass through.
+     */
+    public int|bool|null $subscription_charge_period_end = null;
 
     /** Number of free trial periods before paid billing begins. */
     public ?int $subscription_trial_periods = null;
