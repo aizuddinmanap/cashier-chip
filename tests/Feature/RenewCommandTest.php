@@ -133,4 +133,81 @@ class RenewCommandTest extends TestCase
         Http::assertNothingSent();
         $this->assertEquals('active', $sub->refresh()->chip_status);
     }
+
+    #[Test]
+    public function a_subscription_with_no_saved_token_is_flagged_not_past_due(): void
+    {
+        Event::fake([SubscriptionChargeFailed::class]);
+
+        Http::fake();
+
+        // Remove the default payment method → no token to charge against.
+        PaymentMethod::where('chip_token_id', 'tok_recurring')->delete();
+
+        $sub = $this->makeDueSubscription();
+
+        $this->artisan('cashier:renew')->assertSuccessful();
+
+        // Distinct status, NOT past_due — the customer needs to add a card,
+        // this is not a declined-card dunning case.
+        $this->assertEquals('requires_payment_method', $sub->refresh()->chip_status);
+
+        // Still due-for-renewal so the next run retries once a card is added.
+        $this->assertContains('requires_payment_method', Subscription::dueForRenewal(Carbon::now())->pluck('chip_status')->all());
+
+        // No charge attempted.
+        Http::assertNothingSent();
+
+        // App is still notified so it can prompt for a card.
+        Event::assertDispatched(
+            SubscriptionChargeFailed::class,
+            fn ($e) => ($e->payload['reason'] ?? null) === 'no_payment_method'
+        );
+    }
+
+    #[Test]
+    public function chargeIfStillDue_skips_a_subscription_already_advanced_under_the_lock(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'purchase_r3', 'status' => 'pending']),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_r3/charge/' => Http::response(['status' => 'paid']),
+        ]);
+
+        $sub = $this->makeDueSubscription();
+
+        $command = new \Aizuddinmanap\CashierChip\Console\Commands\RenewCommand();
+        $command->setLaravel(app());
+
+        $reflection = new \ReflectionMethod($command, 'chargeIfStillDue');
+
+        // Simulate the race the lock guards: another run already advanced
+        // renews_at between the select and this critical section.
+        $sub->update(['renews_at' => Carbon::now()->addMonth()]);
+
+        $outcome = $reflection->invoke($command, $sub->refresh(), Carbon::now(), 3);
+
+        $this->assertSame('skipped', $outcome['status']);
+        Http::assertNothingSent();
+    }
+
+    #[Test]
+    public function chargeIfStillDue_charges_and_advances_a_genuinely_due_subscription(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'purchase_r4', 'status' => 'pending']),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_r4/charge/' => Http::response(['status' => 'paid']),
+        ]);
+
+        $sub = $this->makeDueSubscription();
+
+        $command = new \Aizuddinmanap\CashierChip\Console\Commands\RenewCommand();
+        $command->setLaravel(app());
+
+        $reflection = new \ReflectionMethod($command, 'chargeIfStillDue');
+        $outcome = $reflection->invoke($command, $sub, Carbon::now(), 3);
+
+        $this->assertSame('renewed', $outcome['status']);
+        $this->assertTrue($sub->refresh()->renews_at->isFuture());
+        $this->assertDatabaseHas('transactions', ['chip_id' => 'purchase_r4', 'status' => 'success']);
+    }
 }

@@ -181,7 +181,7 @@ class Subscription extends Model
         return $query->whereNull('ends_at')
             ->whereNotNull('renews_at')
             ->where('renews_at', '<=', $now)
-            ->whereIn('chip_status', ['active', 'past_due', 'trialing']);
+            ->whereIn('chip_status', ['active', 'past_due', 'trialing', 'requires_payment_method']);
     }
 
     /**

@@ -219,14 +219,19 @@ class SubscriptionBuilder
             $this->billable->name ?? null
         );
 
-        // Set the actual price as total_override
+        // Send the real per-unit price so the Chip receipt shows the correct
+        // "Unit Price" line (not MYR 0.00). total_override governs the amount
+        // actually charged (and is what trials / overrides adjust).
         if ($amount > 0) {
+            $perUnit = (int) round($amount / max(1, $this->quantity));
+            $checkout->unitPrice($perUnit);
             $checkout->totalOverride($amount);
         }
 
         // Free trial = RM0 preauthorization
         if ($isTrialOnly || $amount === 0) {
             $checkout->skipCapture();
+            $checkout->unitPrice(0);
             $checkout->totalOverride(0);
         }
 

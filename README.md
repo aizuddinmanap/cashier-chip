@@ -109,7 +109,7 @@ $sub = $user->subscription('default');
 $sub->active();  $sub->onTrial();  $sub->onGracePeriod();  $sub->pastDue();
 ```
 
-`chip_status` values: `active`, `trialing`, `canceled`, `expired`, `past_due`. Both `active` and `trialing` count as **valid** (access control, upcoming invoice, etc.).
+`chip_status` values: `active`, `trialing`, `canceled`, `expired`, `past_due`, `requires_payment_method`. Both `active` and `trialing` count as **valid** (access control, upcoming invoice, etc.). `requires_payment_method` means a renewal came due with no saved token — the customer needs to re-add a card; it stays due-for-renewal so the next run retries once a card is on file, and is distinct from a declined-card `past_due`.
 
 ### Manage
 
@@ -152,7 +152,7 @@ Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (fa
 
 ### Schedule renewals
 
-Each token-based subscription records a `renews_at`. The bundled `cashier:renew` command charges only the subscriptions that are **actually due**, advances `renews_at` by one interval on success, and marks `past_due` (retried after the grace period, with a `SubscriptionChargeFailed` event) on failure. Just schedule it:
+Each token-based subscription records a `renews_at`. The bundled `cashier:renew` command charges only the subscriptions that are **actually due**, advances `renews_at` by one interval on success, and marks `past_due` (retried after the grace period, with a `SubscriptionChargeFailed` event) on failure. Subscriptions due with no saved token are flagged `requires_payment_method` and surfaced via the same event, so you can tell "needs a card" apart from "card declined." Renewals run inside a per-subscription cache lock and re-check `renews_at` under the lock, so overlapping runs can't double-charge. Just schedule it:
 
 ```php
 // routes/console.php

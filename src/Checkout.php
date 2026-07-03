@@ -155,6 +155,21 @@ class Checkout
     }
 
     /**
+     * Set the per-unit product price (in cents).
+     *
+     * Chip shows the line-item price on its receipt, so a subscription
+     * checkout should send the real plan price here rather than 0 — otherwise
+     * the receipt reads "Unit Price MYR 0.00 / Total MYR 29.00". `total_override`
+     * (still used for trials / overrides) is what the customer is actually charged.
+     */
+    public function unitPrice(int $price): self
+    {
+        $this->data['price'] = $price;
+
+        return $this;
+    }
+
+    /**
      * Set the customer for the checkout.
      */
     public function customer(string $customerId): self

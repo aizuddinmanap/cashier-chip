@@ -234,6 +234,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Renewal Run
+    |--------------------------------------------------------------------------
+    |
+    | `cashier:renew` charges each due subscription inside a per-subscription
+    | cache lock so overlapping runs (scheduler overlap, or a manual run fired
+    | while the scheduled one is in flight) can't double-charge the same row.
+    | Use a shared cache store (redis/memcached/database/file) for cross-process
+    | protection; the array driver only protects within a single process.
+    |
+    */
+
+    'renewal' => [
+        // Seconds a subscription's renewal lock is held (the critical section).
+        'lock_ttl' => env('CHIP_RENEWAL_LOCK_TTL', 300),
+
+        // Seconds a run will wait to acquire a subscription's lock before
+        // treating it as already being processed by another run.
+        'lock_wait' => env('CHIP_RENEWAL_LOCK_WAIT', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Recurring Payment Configuration
     |--------------------------------------------------------------------------
     |

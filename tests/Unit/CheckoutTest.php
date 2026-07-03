@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Aizuddinmanap\CashierChip\Tests\Unit;
 
 use Aizuddinmanap\CashierChip\Checkout;
+use Aizuddinmanap\CashierChip\Models\Plan;
+use Aizuddinmanap\CashierChip\SubscriptionBuilder;
+use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
 use PHPUnit\Framework\Attributes\Test;
 use Illuminate\Support\Facades\Http;
@@ -257,6 +260,79 @@ class CheckoutTest extends TestCase
 
         Http::assertSent(function ($request) {
             return ! isset($request->data()['due']);
+        });
+    }
+
+    #[Test]
+    public function subscription_builder_checkout_sends_the_real_unit_price(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+                'id' => 'purchase_sub',
+                'checkout_url' => 'https://checkout.chip-in.asia/sub',
+            ]),
+        ]);
+
+        $user = $this->createUser(['chip_id' => 'client_sub', 'email' => 'sub@example.com']);
+
+        Plan::create([
+            'id' => 'price_pro',
+            'chip_price_id' => 'price_pro',
+            'name' => 'Pro',
+            'price' => 29.00,
+            'currency' => 'MYR',
+            'interval' => 'month',
+            'interval_count' => 1,
+        ]);
+
+        (new SubscriptionBuilder($user, 'default', 'price_pro'))
+            ->checkout()
+            ->create();
+
+        // MYR 29.00 → 2900 cents on the line-item price, plus matching
+        // total_override. Previously the unit price was 0 and only the total
+        // read MYR 29.00 on the Chip receipt.
+        Http::assertSent(function ($request) {
+            $products = $request->data()['purchase']['products'][0] ?? [];
+
+            return ($products['price'] ?? null) === 2900
+                && ($request->data()['purchase']['total_override'] ?? null) === 2900;
+        });
+    }
+
+    #[Test]
+    public function subscription_builder_checkout_sends_zero_unit_price_for_a_trial(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response([
+                'id' => 'purchase_trial',
+                'checkout_url' => 'https://checkout.chip-in.asia/trial',
+            ]),
+        ]);
+
+        $user = $this->createUser(['chip_id' => 'client_trial', 'email' => 'trial@example.com']);
+
+        Plan::create([
+            'id' => 'price_trial',
+            'chip_price_id' => 'price_trial',
+            'name' => 'Trial',
+            'price' => 29.00,
+            'currency' => 'MYR',
+            'interval' => 'month',
+            'interval_count' => 1,
+        ]);
+
+        (new SubscriptionBuilder($user, 'default', 'price_trial'))
+            ->trialDays(14)
+            ->checkout()
+            ->create();
+
+        Http::assertSent(function ($request) {
+            $products = $request->data()['purchase']['products'][0] ?? [];
+
+            return ($products['price'] ?? null) === 0
+                && ($request->data()['purchase']['total_override'] ?? null) === 0
+                && ($request->data()['skip_capture'] ?? false) === true;
         });
     }
 } 
