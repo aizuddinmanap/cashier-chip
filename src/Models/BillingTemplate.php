@@ -42,13 +42,13 @@ class BillingTemplate
     /** How long the subscription runs before charging (with *_units). */
     public ?int $subscription_period = null;
 
-    /** Units for subscription_period: day, week, month, year. */
+    /** Units for subscription_period: "days", "weeks", or "months" (plural; default "months"). No "year" — use 12 months. */
     public ?string $subscription_period_units = null;
 
     /** Grace window before the invoice is due (with *_units). */
     public ?int $subscription_due_period = null;
 
-    /** Units for subscription_due_period. */
+    /** Units for subscription_due_period: "days", "weeks", or "months" (plural; default "days"). */
     public ?string $subscription_due_period_units = null;
 
     /**

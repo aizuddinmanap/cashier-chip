@@ -28,7 +28,7 @@ class BillingTemplateTest extends TestCase
             'title' => 'Monthly Subscription',
             'is_subscription' => true,
             'subscription_period' => 1,
-            'subscription_period_units' => 'month',
+            'subscription_period_units' => 'months',
             'purchase' => [
                 'currency' => 'MYR',
                 'products' => [['name' => 'Pro plan', 'price' => 5000]],
@@ -60,7 +60,7 @@ class BillingTemplateTest extends TestCase
             'title' => 'End-of-cycle Subscription',
             'is_subscription' => true,
             'subscription_period' => 1,
-            'subscription_period_units' => 'month',
+            'subscription_period_units' => 'months',
             'subscription_charge_period_end' => true,
             'subscription_trial_periods' => 2,
             'purchase' => ['currency' => 'MYR', 'products' => [['name' => 'Pro', 'price' => 5000]]],
