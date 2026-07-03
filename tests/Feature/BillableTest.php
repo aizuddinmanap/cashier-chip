@@ -25,7 +25,7 @@ class BillableTest extends TestCase
     public function it_can_create_chip_customer(): void
     {
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients' => Http::response([
+            'api.test.chip-in.asia/api/v1/clients/' => Http::response([
                 'id' => 'client_123',
                 'email' => 'test@example.com',
                 'full_name' => 'Test User',
@@ -63,7 +63,7 @@ class BillableTest extends TestCase
         $this->user->update(['chip_id' => 'client_123']);
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients/client_123' => Http::response([
+            'api.test.chip-in.asia/api/v1/clients/client_123/' => Http::response([
                 'id' => 'client_123',
                 'email' => 'test@example.com',
                 'full_name' => 'Updated Name',
@@ -377,7 +377,7 @@ class BillableTest extends TestCase
     public function it_can_find_chip_customer_by_email(): void
     {
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients?q=test%40example.com' => Http::response([
+            'api.test.chip-in.asia/api/v1/clients/?q=test%40example.com' => Http::response([
                 [
                     'id' => 'client_123',
                     'email' => 'test@example.com',

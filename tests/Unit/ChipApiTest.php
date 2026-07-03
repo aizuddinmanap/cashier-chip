@@ -212,12 +212,18 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/clients/' => Http::response($expectedResponse),
         ]);
 
         $result = $this->api->createClient($clientData);
 
         $this->assertEquals($expectedResponse, $result);
+
+        // Chip's API (DRF, APPEND_SLASH) 404s a POST without the trailing slash.
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && str_ends_with($request->url(), '/clients/');
+        });
     }
 
     #[Test]
@@ -232,7 +238,7 @@ class ChipApiTest extends TestCase
         ];
 
         Http::fake([
-            'api.test.chip-in.asia/api/v1/clients?q=test%40example.com' => Http::response($expectedResponse),
+            'api.test.chip-in.asia/api/v1/clients/?q=test%40example.com' => Http::response($expectedResponse),
         ]);
 
         $api = new ChipApi();

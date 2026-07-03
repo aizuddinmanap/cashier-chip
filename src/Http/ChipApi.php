@@ -253,7 +253,7 @@ class ChipApi
      */
     public function createClient(array $data): array
     {
-        return $this->post('clients', $data);
+        return $this->post('clients/', $data);
     }
 
     /**
@@ -261,7 +261,7 @@ class ChipApi
      */
     public function updateClient(string $clientId, array $data): array
     {
-        return $this->put("clients/{$clientId}", $data);
+        return $this->put("clients/{$clientId}/", $data);
     }
 
     /**
@@ -269,7 +269,7 @@ class ChipApi
      */
     public function getClient(string $clientId): array
     {
-        return $this->get("clients/{$clientId}");
+        return $this->get("clients/{$clientId}/");
     }
 
     /**
@@ -277,7 +277,7 @@ class ChipApi
      */
     public function createWebhook(array $data): array
     {
-        return $this->post('webhooks', $data);
+        return $this->post('webhooks/', $data);
     }
 
     /**
@@ -285,7 +285,7 @@ class ChipApi
      */
     public function getWebhooks(): array
     {
-        return $this->get('webhooks');
+        return $this->get('webhooks/');
     }
 
     /**
@@ -293,7 +293,7 @@ class ChipApi
      */
     public function deleteWebhook(string $webhookId): array
     {
-        return $this->delete("webhooks/{$webhookId}");
+        return $this->delete("webhooks/{$webhookId}/");
     }
 
     /**
@@ -301,7 +301,7 @@ class ChipApi
      */
     public function getPublicKey(): array
     {
-        return $this->get('public_key');
+        return $this->get('public_key/');
     }
 
     /**
@@ -359,7 +359,7 @@ class ChipApi
      */
     public function searchClientsByEmail(string $email): array
     {
-        return $this->get('clients', ['q' => $email]);
+        return $this->get('clients/', ['q' => $email]);
     }
 
     /**
