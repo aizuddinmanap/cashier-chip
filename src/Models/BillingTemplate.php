@@ -61,6 +61,14 @@ class BillingTemplate
     /** Number of free trial periods before paid billing begins. */
     public ?int $subscription_trial_periods = null;
 
+    /**
+     * Whether the subscription is active (writable; default false on CHIP).
+     *
+     * Setting false pauses billing for every launched subscriber (equivalent to
+     * status "subscription_paused"). Read-only when is_subscription is false.
+     */
+    public ?bool $subscription_active = null;
+
     /** Total number of billing cycles (null = indefinite). */
     public ?int $number_of_billing_cycles = null;
 
@@ -95,6 +103,7 @@ class BillingTemplate
         'subscription_due_period_units',
         'subscription_charge_period_end',
         'subscription_trial_periods',
+        'subscription_active',
         'number_of_billing_cycles',
         'force_recurring',
         'invoice_issued',

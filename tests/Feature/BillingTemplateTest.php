@@ -63,6 +63,7 @@ class BillingTemplateTest extends TestCase
             'subscription_period_units' => 'months',
             'subscription_charge_period_end' => true,
             'subscription_trial_periods' => 2,
+            'subscription_active' => true,
             'purchase' => ['currency' => 'MYR', 'products' => [['name' => 'Pro', 'price' => 5000]]],
         ]);
 
@@ -70,7 +71,8 @@ class BillingTemplateTest extends TestCase
             return str_ends_with($request->url(), '/billing_templates/')
                 && $request['is_subscription'] === true
                 && $request['subscription_charge_period_end'] === true
-                && $request['subscription_trial_periods'] === 2;
+                && $request['subscription_trial_periods'] === 2
+                && $request['subscription_active'] === true;
         });
     }
 
