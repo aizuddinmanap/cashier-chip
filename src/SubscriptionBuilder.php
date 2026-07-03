@@ -147,51 +147,47 @@ class SubscriptionBuilder
         // Resolve payment method token
         $token = $this->resolvePaymentMethodToken($paymentMethod);
 
-        try {
-            if ($isTrialOnly && ! $token) {
-                return $this->createTrialSubscription($options);
-            }
-
-            // Ensure the billable model has a Chip customer
-            if (! $this->billable->hasChipId()) {
-                $this->billable->createAsChipCustomer();
-            }
-
-            // Create subscription via Chip API
-            $api = new Http\ChipApi();
-
-            $subscriptionData = [
-                'customer_id' => $this->billable->chipId(),
-                'price_id' => $this->priceId,
-                'quantity' => $this->quantity,
-                'metadata' => $this->metadata,
-            ];
-
-            $subscriptionData = array_merge($subscriptionData, $options);
-
-            $response = $api->createSubscription($subscriptionData);
-
-            // Create local subscription record
-            $subscription = $this->billable->subscriptions()->create([
-                'name' => $this->name,
-                'chip_id' => $response['id'],
-                'chip_status' => $response['status'] ?? 'active',
-                'chip_price_id' => $this->priceId,
-                'quantity' => $this->quantity,
-                'trial_ends_at' => $this->trialEnds,
-                'ends_at' => null,
-            ]);
-
-            // If a payment method token was provided, store it
-            if ($token && $paymentMethod instanceof PaymentMethod) {
-                $this->billable->updateDefaultPaymentMethod($paymentMethod->id);
-            }
-
-            return $subscription;
-
-        } catch (\Exception $e) {
-            throw new \Exception("Failed to create subscription: {$e->getMessage()}");
+        // Trial-only with no card: local trial subscription, no API call.
+        if ($isTrialOnly && ! $token) {
+            return $this->createTrialSubscription($options);
         }
+
+        // Chip has no server-side subscription object. A brand-new paid
+        // subscription needs a card first — collect it via checkout(). create()
+        // only works once you have a saved payment method to charge renewals.
+        if (! $token) {
+            throw new \LogicException(
+                'Cannot create a paid subscription without a saved payment method. Use '
+                . '$user->newSubscription(...)->checkout() to collect a card on Chip\'s '
+                . 'hosted page, or pass a PaymentMethod/token to create(). For a '
+                . 'Chip-managed subscription, use $user->subscribeToTemplate().'
+            );
+        }
+
+        // Ensure the billable model has a Chip customer
+        if (! $this->billable->hasChipId()) {
+            $this->billable->createAsChipCustomer();
+        }
+
+        // Token-based subscription: the record is local; renewals charge the
+        // saved token (see renew() / chargeWithToken()). Chip has no subscription
+        // resource to create remotely.
+        $subscription = $this->billable->subscriptions()->create([
+            'name' => $this->name,
+            'chip_id' => 'sub_' . uniqid(),
+            'chip_status' => 'active',
+            'chip_price_id' => $this->priceId,
+            'quantity' => $this->quantity,
+            'trial_ends_at' => $this->trialEnds,
+            'ends_at' => null,
+        ]);
+
+        // If a PaymentMethod model was provided, make it the default.
+        if ($paymentMethod instanceof PaymentMethod) {
+            $this->billable->updateDefaultPaymentMethod($paymentMethod->id);
+        }
+
+        return $subscription;
     }
 
     /**

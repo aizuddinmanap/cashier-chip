@@ -108,9 +108,11 @@ class BillingTemplateTest extends TestCase
 
         Http::fake([
             'api.test.chip-in.asia/api/v1/billing_templates/bt_1/add_subscriber/' => Http::response([
-                'id' => 'btc_1',
-                'client_id' => 'client_123',
-                'status' => 'active',
+                'billing_template_client' => [
+                    'id' => 'btc_1',
+                    'client_id' => 'client_123',
+                    'status' => 'active',
+                ],
             ]),
         ]);
 
@@ -122,9 +124,11 @@ class BillingTemplateTest extends TestCase
         $this->assertEquals('active', $subscription->chip_status);
         $this->assertTrue($user->subscriptions()->where('chip_billing_template_id', 'bt_1')->exists());
 
+        // client_id must be sent at the top level, not nested.
         Http::assertSent(function ($request) {
             return str_ends_with($request->url(), '/billing_templates/bt_1/add_subscriber/')
-                && ($request['billing_template_client']['client_id'] ?? null) === 'client_123';
+                && ($request['client_id'] ?? null) === 'client_123'
+                && ! isset($request['billing_template_client']);
         });
     }
 
@@ -161,13 +165,16 @@ class BillingTemplateTest extends TestCase
 
         Http::fake([
             'api.test.chip-in.asia/api/v1/billing_templates/bt_1/add_subscriber/' => Http::response([
-                'id' => 'btc_2',
-                'subscription_billing_scheduled_on' => 1893456000, // future epoch
+                'billing_template_client' => [
+                    'id' => 'btc_2',
+                    'subscription_billing_scheduled_on' => 1893456000, // future epoch
+                ],
             ]),
         ]);
 
         $subscription = $template->addSubscriber($user);
 
+        $this->assertEquals('btc_2', $subscription->chip_id);
         $this->assertEquals('trialing', $subscription->chip_status);
         $this->assertNotNull($subscription->trial_ends_at);
     }

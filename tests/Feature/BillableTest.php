@@ -113,19 +113,23 @@ class BillableTest extends TestCase
     {
         $this->user->update(['chip_id' => 'client_123']);
 
-        Http::fake([
-            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
-                'id' => 'sub_123',
-                'status' => 'active',
-            ]),
-        ]);
-
+        // Token-based: pass a saved payment token; the subscription record is
+        // local (Chip has no /subscriptions/ resource to create remotely).
         $subscription = $this->user->newSubscription('default', 'price_monthly')
-            ->create();
+            ->create('tok_123');
 
         $this->assertEquals('default', $subscription->name);
         $this->assertEquals('price_monthly', $subscription->chip_price_id);
         $this->assertTrue($subscription->active());
+    }
+
+    #[Test]
+    public function creating_a_paid_subscription_without_a_token_directs_to_checkout(): void
+    {
+        // No card and not a trial → Chip can't tokenize; must use checkout().
+        $this->expectException(\LogicException::class);
+
+        $this->user->newSubscription('default', 'price_monthly')->create();
     }
 
     #[Test]
@@ -147,21 +151,14 @@ class BillableTest extends TestCase
     {
         $this->user->update(['chip_id' => 'client_123']);
 
-        Http::fake([
-            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
-                'id' => 'sub_123',
-                'status' => 'active',
-            ]),
-        ]);
-
         $subscription = $this->user->newSubscription('premium', 'price_yearly')
             ->skipTrial()
-            ->create();
+            ->create('tok_123');
 
         $this->assertFalse($subscription->onTrial());
         $this->assertNull($subscription->trial_ends_at);
         $this->assertEquals('active', $subscription->chip_status);
-        $this->assertEquals('sub_123', $subscription->chip_id);
+        $this->assertStringStartsWith('sub_', $subscription->chip_id);
     }
 
     #[Test]
@@ -176,23 +173,16 @@ class BillableTest extends TestCase
         $this->assertEquals('trialing', $trialSubscription->chip_status);
         $this->assertStringStartsWith('trial_', $trialSubscription->chip_id);
 
-        // Create paid subscription (API call)
+        // Create paid subscription (token-based, local record)
         $this->user->update(['chip_id' => 'client_123']);
-
-        Http::fake([
-            'api.test.chip-in.asia/api/v1/subscriptions' => Http::response([
-                'id' => 'sub_paid_123',
-                'status' => 'active',
-            ]),
-        ]);
 
         $paidSubscription = $this->user->newSubscription('paid', 'price_yearly')
             ->skipTrial()
-            ->create();
+            ->create('tok_123');
 
         $this->assertFalse($paidSubscription->onTrial());
         $this->assertEquals('active', $paidSubscription->chip_status);
-        $this->assertEquals('sub_paid_123', $paidSubscription->chip_id);
+        $this->assertStringStartsWith('sub_', $paidSubscription->chip_id);
     }
 
     #[Test]

@@ -372,13 +372,20 @@ class ChipApi
     /**
      * Create a subscription via Chip API.
      *
-     * @deprecated Chip has no documented top-level /subscriptions/ endpoint.
-     *             Use the Billing Template API (createBillingTemplate() +
-     *             addSubscriber()) for native recurring billing instead.
+     * @deprecated Chip has no /subscriptions/ endpoint — this now throws.
+     *             Use the Billing Template API ($user->subscribeToTemplate() /
+     *             createBillingTemplate() + addSubscriber()) or the token-based
+     *             flow ($user->newSubscription(...)->checkout()).
+     *
+     * @throws \LogicException
      */
     public function createSubscription(array $data): array
     {
-        return $this->post('subscriptions', $data);
+        throw new \LogicException(
+            'Chip has no /subscriptions/ endpoint. Use the Billing Template API '
+            . '($user->subscribeToTemplate() / createBillingTemplate() + addSubscriber()) '
+            . 'or $user->newSubscription(...)->checkout() for token-based recurring.'
+        );
     }
 
     /**
@@ -462,9 +469,9 @@ class ChipApi
     /**
      * Add a subscriber to a billing template via Chip API.
      *
-     * The body carries a billing_template_client (with the Chip client_id) and
-     * an optional purchase override. For a subscription template this enrolls
-     * the client so Chip charges them automatically each cycle.
+     * The body carries the Chip client_id (and optional whitelist / send_* flags)
+     * at the top level, plus an optional purchase override. For a subscription
+     * template this enrolls the client so Chip charges them automatically.
      */
     public function addSubscriber(string $templateId, array $data): array
     {

@@ -61,20 +61,19 @@ class Billing
     /**
      * Add a subscriber to a billing template.
      *
-     * Accepts a bare Chip client_id, a billing_template_client array, or an
-     * already-assembled request body (with billing_template_client / purchase).
+     * Chip wants client_id (and whitelist / send_* flags) at the top level of the
+     * body. Accepts a bare client_id, a flat body, or a legacy nested
+     * {billing_template_client: {...}} which is flattened.
      */
     public function addSubscriber(string $templateId, string|array $client, array $options = []): array
     {
-        if (is_array($client) && (isset($client['billing_template_client']) || isset($client['purchase']))) {
-            return (new ChipApi())->addSubscriber($templateId, $client);
-        }
-
         if (is_string($client)) {
             $client = ['client_id' => $client];
+        } elseif (isset($client['billing_template_client'])) {
+            $client = $client['billing_template_client'];
         }
 
-        $body = ['billing_template_client' => $client];
+        $body = $client;
 
         if (! empty($options['purchase'])) {
             $body['purchase'] = $options['purchase'];

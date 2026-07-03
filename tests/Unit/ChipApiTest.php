@@ -420,22 +420,26 @@ class ChipApiTest extends TestCase
     {
         Http::fake([
             'api.test.chip-in.asia/api/v1/billing_templates/bt_123/add_subscriber/' => Http::response([
-                'id' => 'btc_1',
-                'client_id' => 'client_123',
-                'status' => 'active',
+                'billing_template_client' => [
+                    'id' => 'btc_1',
+                    'client_id' => 'client_123',
+                    'status' => 'active',
+                ],
             ]),
         ]);
 
+        // Chip wants client_id at the top level of the body (nested 400s).
         $result = $this->api->addSubscriber('bt_123', [
-            'billing_template_client' => ['client_id' => 'client_123'],
+            'client_id' => 'client_123',
         ]);
 
-        $this->assertEquals('btc_1', $result['id']);
+        $this->assertEquals('btc_1', $result['billing_template_client']['id']);
 
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
                 && str_ends_with($request->url(), '/billing_templates/bt_123/add_subscriber/')
-                && ($request['billing_template_client']['client_id'] ?? null) === 'client_123';
+                && ($request['client_id'] ?? null) === 'client_123'
+                && ! isset($request['billing_template_client']);
         });
     }
 } 

@@ -125,10 +125,55 @@ class BillingTemplate
 
             if ($key === 'purchase' && is_array($value)) {
                 $this->purchase = new PurchaseDetails($value);
+            } elseif ($key === 'subscription_period_units' || $key === 'subscription_due_period_units') {
+                $this->{$key} = self::normalizePeriodUnits($value);
             } else {
                 $this->{$key} = $value;
             }
         }
+    }
+
+    /**
+     * Build a subscription template pre-filled with the fields Chip requires.
+     *
+     * Chip requires subscription_period(_units), subscription_due_period(_units),
+     * subscription_charge_period_end, subscription_trial_periods and
+     * subscription_active for a subscription template — omitting any one is a 400.
+     * This fills sane defaults (monthly, due in 7 days, charge up-front, no trial,
+     * active); override any via $attributes, and add a `purchase` for the price.
+     */
+    public static function subscription(string $title, array $attributes = []): self
+    {
+        return new self(array_merge([
+            'title' => $title,
+            'is_subscription' => true,
+            'subscription_period' => 1,
+            'subscription_period_units' => 'months',
+            'subscription_due_period' => 7,
+            'subscription_due_period_units' => 'days',
+            'subscription_charge_period_end' => false,
+            'subscription_trial_periods' => 0,
+            'subscription_active' => true,
+        ], $attributes));
+    }
+
+    /**
+     * Normalize a period unit to Chip's plural enum (days | weeks | months).
+     *
+     * Chip rejects the singular "month"/"week"/"day"; accept them for convenience.
+     */
+    protected static function normalizePeriodUnits($value)
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        return match (strtolower($value)) {
+            'day', 'days' => 'days',
+            'week', 'weeks' => 'weeks',
+            'month', 'months' => 'months',
+            default => $value,
+        };
     }
 
     /**
@@ -232,7 +277,10 @@ class BillingTemplate
             ]))
         );
 
-        $body = ['billing_template_client' => $client];
+        // Chip expects client_id (and the whitelist / send_* flags) at the TOP
+        // level of the request body. A nested {billing_template_client: {...}} is
+        // rejected with "Please specify an existing Client's id" (verified live).
+        $body = $client;
 
         if (! empty($options['purchase'])) {
             $body['purchase'] = $options['purchase'] instanceof PurchaseDetails
@@ -242,18 +290,23 @@ class BillingTemplate
 
         $response = (new ChipApi())->addSubscriber($this->id, $body);
 
+        // The success body nests the enrolled client under billing_template_client
+        // (fall back to the top level for other shapes) — reading id/status/
+        // subscription_billing_scheduled_on from the top level would be null.
+        $subscriber = $response['billing_template_client'] ?? $response;
+
         $onTrial = ($this->subscription_trial_periods ?? 0) > 0;
 
-        $trialEndsAt = null;
-        if ($onTrial && ! empty($response['subscription_billing_scheduled_on'])) {
-            $trialEndsAt = \Carbon\Carbon::createFromTimestamp($response['subscription_billing_scheduled_on']);
-        }
+        $scheduledOn = $subscriber['subscription_billing_scheduled_on'] ?? null;
+        $trialEndsAt = ($onTrial && $scheduledOn)
+            ? \Carbon\Carbon::createFromTimestamp((int) $scheduledOn)
+            : null;
 
         return $billable->subscriptions()->create([
             'name' => $options['name'] ?? 'default',
-            'chip_id' => $response['id'] ?? 'bts_' . uniqid(),
+            'chip_id' => $subscriber['id'] ?? 'bts_' . uniqid(),
             'chip_billing_template_id' => $this->id,
-            'chip_status' => $response['status'] ?? ($onTrial ? 'trialing' : 'active'),
+            'chip_status' => $subscriber['status'] ?? ($onTrial ? 'trialing' : 'active'),
             'chip_price_id' => null,
             'quantity' => 1,
             'trial_ends_at' => $trialEndsAt,
