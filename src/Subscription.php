@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aizuddinmanap\CashierChip;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,6 +13,7 @@ use Aizuddinmanap\CashierChip\Models\Plan;
 
 class Subscription extends Model
 {
+    use HasFactory;
     /**
      * The attributes that are not mass assignable.
      */

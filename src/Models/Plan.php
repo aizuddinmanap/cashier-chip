@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Aizuddinmanap\CashierChip\Models;
 
 use Aizuddinmanap\CashierChip\Subscription;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
 
 class Plan extends Model
 {
+    use HasFactory;
     /**
      * The table associated with the model.
      */

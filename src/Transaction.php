@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aizuddinmanap\CashierChip;
 
 use Aizuddinmanap\CashierChip\Http\ChipApi;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Money\Currency;
@@ -12,6 +13,7 @@ use Money\Money;
 
 class Transaction extends Model
 {
+    use HasFactory;
     /**
      * The table associated with the model.
      */

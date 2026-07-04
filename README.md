@@ -382,7 +382,32 @@ Cashier::useSubscriptionModel(App\Models\Subscription::class);
 composer test
 ```
 
-150+ tests cover the Cashier-compatible API, transactions, invoices/PDF, subscriptions (token+scheduler and the experimental Billing Templates), webhooks, and CHIP API integration.
+Model factories are bundled for `Subscription`, `Plan`, `Transaction`, and `PaymentMethod` — use them in your own test suite instead of hand-building rows:
+
+```php
+use Aizuddinmanap\CashierChip\Models\Plan;
+use Aizuddinmanap\CashierChip\Subscription;
+
+// A bare create() yields a chargeable, due-for-renewal subscription
+// (seeds a matching Plan + a default owner from config('cashier.model')).
+$sub = Subscription::factory()->create();
+
+// Lifecycle states compose:
+Subscription::factory()->active()->create();
+Subscription::factory()->pastDue()->dueForRenewal()->create();
+Subscription::factory()->onTrial()->create();
+Subscription::factory()->requiresPaymentMethod()->dueForRenewal()->create();
+Subscription::factory()->withToken()->create();   // owner gets a default PM
+
+// Bind to your own records:
+Subscription::factory()->forBillable($user)->forPlan($plan)->create();
+Subscription::factory()->forPrice('price_pro', 50.00)->create();
+Transaction::factory()->forBillable($user)->success()->create();
+PaymentMethod::factory()->forBillable($user)->default()->create();
+Plan::factory()->yearly()->create(['price' => 290.00]);
+```
+
+Factories are decoupled from Chip's API shapes (they only touch local DB rows), so they won't drift as the API evolves. 180+ tests cover the Cashier-compatible API, transactions, invoices/PDF, subscriptions (token+scheduler and the experimental Billing Templates), webhooks, and CHIP API integration.
 
 ## License
 

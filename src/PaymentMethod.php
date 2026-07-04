@@ -7,11 +7,14 @@ namespace Aizuddinmanap\CashierChip;
 use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class PaymentMethod extends Model implements Arrayable, Jsonable
 {
+    use HasFactory;
+
     protected $guarded = [];
 
     protected $casts = [
