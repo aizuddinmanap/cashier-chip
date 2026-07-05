@@ -199,7 +199,10 @@ class RenewCommand extends Command
             }
 
             $oldRenewsAt = $subscription->renews_at;
-            $newRenewsAt = $subscription->nextRenewalFrom($now);
+            // Anchor to the old renews_at (not $now) so a late run doesn't drift
+            // the billing anniversary, and skip ahead past $now if an outage left
+            // the subscription several intervals behind (charge once, not N times).
+            $newRenewsAt = $subscription->nextRenewalAfter($oldRenewsAt, $now);
 
             // Advance schedule + consume credit in ONE atomic update. Done at
             // the query-builder level (not via $subscription->update()) because

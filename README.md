@@ -148,7 +148,7 @@ if ($delta > 0) {
 }
 ```
 
-Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (failure) — hook these for receipts, dunning, tax, or accounting. The library charges and records; the policy is yours.
+Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (failure) — hook these for receipts, dunning, tax, or accounting. The library charges and records; the policy is yours. Each renewal anchors `renews_at` to the prior due date (not the run time), so a late scheduler run doesn't drift the billing anniversary — a "5th of the month" stays the 5th. If an outage left a subscription several intervals behind, it advances to the next future due date and charges once (not N times for downtime).
 
 #### Credit balance (downgrade proration)
 

@@ -220,4 +220,71 @@ class RenewCommandTest extends TestCase
         $this->assertEquals($oldRenewsAt->timestamp, $sub->current_period_start->timestamp);
         $this->assertEquals($sub->renews_at->timestamp, $sub->current_period_end->timestamp);
     }
+
+    #[Test]
+    public function a_late_run_does_not_drift_the_billing_anniversary(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'purchase_late', 'status' => 'pending']),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_late/charge/' => Http::response(['status' => 'paid']),
+        ]);
+
+        // Due on the 5th; the run fires 2 days late, on the 7th.
+        $due = Carbon::parse(Carbon::now()->startOfMonth())->setDay(5);
+        $runAt = (clone $due)->addDays(2);
+
+        $sub = $this->makeDueSubscription(['renews_at' => $due]);
+        $expectedNext = (clone $due)->addMonthNoOverflow();
+
+        $command = new \Aizuddinmanap\CashierChip\Console\Commands\RenewCommand();
+        $command->setLaravel(app());
+
+        $reflection = new \ReflectionMethod($command, 'chargeIfStillDue');
+        $outcome = $reflection->invoke($command, $sub, $runAt, 3);
+
+        $this->assertSame('renewed', $outcome['status']);
+
+        $sub->refresh();
+
+        // Next renewal anchored to the DUE date (5th), not the run date (7th).
+        $this->assertSame($expectedNext->day, $sub->renews_at->day, 'anniversary preserved');
+
+        // Period spans exactly one interval: [due, due + 1 month].
+        $this->assertEquals($due->timestamp, $sub->current_period_start->timestamp);
+        $this->assertEquals($sub->renews_at->timestamp, $sub->current_period_end->timestamp);
+    }
+
+    #[Test]
+    public function an_outage_charges_once_and_advances_strictly_past_now(): void
+    {
+        Http::fake([
+            'api.test.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'purchase_out', 'status' => 'pending']),
+            'api.test.chip-in.asia/api/v1/purchases/purchase_out/charge/' => Http::response(['status' => 'paid']),
+        ]);
+
+        // Cron was down for ~10 weeks on a monthly plan — renews_at is 10 weeks past.
+        $due = Carbon::now()->subWeeks(10);
+        $runAt = Carbon::now();
+
+        $sub = $this->makeDueSubscription(['renews_at' => $due]);
+
+        $command = new \Aizuddinmanap\CashierChip\Console\Commands\RenewCommand();
+        $command->setLaravel(app());
+
+        $reflection = new \ReflectionMethod($command, 'chargeIfStillDue');
+        $outcome = $reflection->invoke($command, $sub, $runAt, 3);
+
+        $this->assertSame('renewed', $outcome['status']);
+
+        $sub->refresh();
+
+        // Charged exactly once (not N times for the 10 missed weeks).
+        $this->assertDatabaseCount('transactions', 1);
+
+        // Next renewal is strictly in the future (skip-ahead past $runAt).
+        $this->assertTrue($sub->renews_at->isFuture());
+
+        // And it's anchored to the due date's day-of-month, not the run's.
+        $this->assertSame($due->day, $sub->renews_at->day);
+    }
 }

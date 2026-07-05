@@ -112,6 +112,32 @@ class Subscription extends Model
     }
 
     /**
+     * The next renewal date strictly after $after, anchored to the prior
+     * renews_at (not to "now").
+     *
+     * Used by cashier:renew so a late scheduler run doesn't drift the billing
+     * anniversary — nextRenewalFrom($now) would move "5th + 1 month" to
+     * "6th + 1 month" whenever the run fires a day late, and the slip compounds
+     * every cycle. Anchoring to the old renews_at keeps the day-of-month stable.
+     *
+     * Skip-ahead: if an outage left renews_at several intervals in the past,
+     * advances until the result is strictly in the future so the customer is
+     * charged once, not N times for downtime. Bounded (nextRenewalFrom always
+     * advances by at least one unit) so the loop terminates.
+     */
+    public function nextRenewalAfter(Carbon $after, Carbon $now): Carbon
+    {
+        $next = $this->nextRenewalFrom($after);
+
+        // Guard against a degenerate non-advancing interval before looping.
+        while ($next->lessThanOrEqualTo($now) && $next->greaterThan($after)) {
+            $next = $this->nextRenewalFrom($next);
+        }
+
+        return $next;
+    }
+
+    /**
      * The start of the current billing period.
      *
      * Prefers the persisted current_period_start (an authoritative record of
