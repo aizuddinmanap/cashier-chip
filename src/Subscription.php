@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
+use Aizuddinmanap\CashierChip\Database\Factories\SubscriptionFactory;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +16,16 @@ use Aizuddinmanap\CashierChip\Models\Plan;
 class Subscription extends Model
 {
     use HasFactory;
+
+    /**
+     * Resolve the factory directly so Model::factory() works in consumer apps
+     * regardless of Factory::$namespace or any app-level factory resolver.
+     */
+    protected static function newFactory(): Factory
+    {
+        return SubscriptionFactory::new();
+    }
+
     /**
      * The attributes that are not mass assignable.
      */

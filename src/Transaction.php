@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
+use Aizuddinmanap\CashierChip\Database\Factories\TransactionFactory;
 use Aizuddinmanap\CashierChip\Http\ChipApi;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -14,6 +16,16 @@ use Money\Money;
 class Transaction extends Model
 {
     use HasFactory;
+
+    /**
+     * Resolve the factory directly so Model::factory() works in consumer apps
+     * regardless of Factory::$namespace or any app-level factory resolver.
+     */
+    protected static function newFactory(): Factory
+    {
+        return TransactionFactory::new();
+    }
+
     /**
      * The table associated with the model.
      */

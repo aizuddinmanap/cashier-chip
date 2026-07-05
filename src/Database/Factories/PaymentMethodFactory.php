@@ -15,12 +15,34 @@ class PaymentMethodFactory extends Factory
 {
     protected $model = PaymentMethod::class;
 
+    /**
+     * Create a default billable owner if none was attached via forBillable(),
+     * so a bare PaymentMethod::factory()->create() is valid (morphs are NOT NULL).
+     */
+    public function configure(): static
+    {
+        return $this->afterMaking(function (PaymentMethod $paymentMethod) {
+            if (! $paymentMethod->billable_type || ! $paymentMethod->billable_id) {
+                $model = config('cashier.model');
+                $owner = new $model();
+                $owner->fill([
+                    'name' => 'Factory User',
+                    'email' => 'factory_' . uniqid() . '@example.com',
+                    'password' => bcrypt('password'),
+                ])->save();
+
+                $paymentMethod->billable_type = $owner->getMorphClass();
+                $paymentMethod->billable_id = $owner->getKey();
+            }
+        });
+    }
+
     public function definition(): array
     {
         return [
             'chip_token_id' => 'tok_' . uniqid(),
-            'billable_type' => null,
-            'billable_id' => null,
+            'billable_type' => null, // seeded by configure() if unset
+            'billable_id' => null,   // seeded by configure() if unset
             'card_brand' => 'visa',
             'card_last_four' => '4242',
             'card_expiry_month' => '12',

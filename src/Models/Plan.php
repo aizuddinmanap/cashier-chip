@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip\Models;
 
+use Aizuddinmanap\CashierChip\Database\Factories\PlanFactory;
 use Aizuddinmanap\CashierChip\Subscription;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +15,16 @@ use Illuminate\Database\Eloquent\Builder;
 class Plan extends Model
 {
     use HasFactory;
+
+    /**
+     * Resolve the factory directly so Model::factory() works in consumer apps
+     * regardless of Factory::$namespace or any app-level factory resolver.
+     */
+    protected static function newFactory(): Factory
+    {
+        return PlanFactory::new();
+    }
+
     /**
      * The table associated with the model.
      */

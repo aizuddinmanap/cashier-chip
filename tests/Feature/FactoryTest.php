@@ -11,6 +11,7 @@ use Aizuddinmanap\CashierChip\Tests\Fixtures\User;
 use Aizuddinmanap\CashierChip\Tests\TestCase;
 use Aizuddinmanap\CashierChip\Transaction;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -162,5 +163,39 @@ class FactoryTest extends TestCase
         $this->assertSame($user->id, $pm->billable_id);
         $this->assertTrue($pm->is_default);
         $this->assertSame($user->defaultPaymentMethod()->id, $pm->id);
+    }
+
+    /**
+     * Resolve factories under Laravel's default resolver (no custom masking),
+     * matching what a real consumer app uses.
+     */
+    #[Test]
+    public function factories_resolve_without_a_custom_resolver(): void
+    {
+        // Snapshot the test's custom resolver so we can restore it for the
+        // rest of the suite; then flush to Laravel's default state.
+        Factory::flushState();
+
+        try {
+            $sub = Subscription::factory()->create();
+            $plan = Plan::factory()->create();
+            $txn = Transaction::factory()->create();
+            $pm = PaymentMethod::factory()->create();
+
+            $this->assertNotNull($sub->id);
+            $this->assertNotNull($plan->id);
+            $this->assertNotNull($txn->id);
+            $this->assertNotNull($pm->id);
+
+            // Internal chaining also works: SubscriptionFactory seeds a Plan
+            // via Plan::factory(), which would blow up if Plan didn't resolve.
+            $this->assertNotEmpty($sub->chip_price_id);
+            $this->assertGreaterThan(0, $sub->amount());
+        } finally {
+            // Restore the custom resolver so subsequent tests behave as before.
+            Factory::guessFactoryNamesUsing(
+                fn (string $modelName) => 'Aizuddinmanap\\CashierChip\\Database\\Factories\\'.class_basename($modelName).'Factory'
+            );
+        }
     }
 }

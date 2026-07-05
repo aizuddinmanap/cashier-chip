@@ -16,14 +16,36 @@ class TransactionFactory extends Factory
 {
     protected $model = Transaction::class;
 
+    /**
+     * Create a default billable owner if none was attached via forBillable(),
+     * so a bare Transaction::factory()->create() is valid (morphs are NOT NULL).
+     */
+    public function configure(): static
+    {
+        return $this->afterMaking(function (Transaction $transaction) {
+            if (! $transaction->billable_type || ! $transaction->billable_id) {
+                $model = config('cashier.model');
+                $owner = new $model();
+                $owner->fill([
+                    'name' => 'Factory User',
+                    'email' => 'factory_' . uniqid() . '@example.com',
+                    'password' => bcrypt('password'),
+                ])->save();
+
+                $transaction->billable_type = $owner->getMorphClass();
+                $transaction->billable_id = $owner->getKey();
+            }
+        });
+    }
+
     public function definition(): array
     {
         return [
             'id' => 'txn_' . uniqid(),
             'chip_id' => 'purchase_' . uniqid(),
             'customer_id' => null,
-            'billable_type' => null,
-            'billable_id' => null,
+            'billable_type' => null, // seeded by configure() if unset
+            'billable_id' => null,   // seeded by configure() if unset
             'type' => 'charge',
             'status' => 'success',
             'currency' => 'MYR',

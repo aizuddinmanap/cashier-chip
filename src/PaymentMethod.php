@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Aizuddinmanap\CashierChip;
 
+use Aizuddinmanap\CashierChip\Database\Factories\PaymentMethodFactory;
 use Aizuddinmanap\CashierChip\Http\ChipApi;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -14,6 +16,15 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class PaymentMethod extends Model implements Arrayable, Jsonable
 {
     use HasFactory;
+
+    /**
+     * Resolve the factory directly so Model::factory() works in consumer apps
+     * regardless of Factory::$namespace or any app-level factory resolver.
+     */
+    protected static function newFactory(): Factory
+    {
+        return PaymentMethodFactory::new();
+    }
 
     protected $guarded = [];
 
