@@ -150,6 +150,26 @@ if ($delta > 0) {
 
 Renewals fire `SubscriptionRenewed` (success) and `SubscriptionChargeFailed` (failure) — hook these for receipts, dunning, tax, or accounting. The library charges and records; the policy is yours.
 
+#### Credit balance (downgrade proration)
+
+A downgrade banks its unused value as `credit_balance` on the subscription, and `cashier:renew` spends it before charging the token:
+
+```php
+// Bank credit manually (e.g. from your own proration policy):
+$sub->addCredit(1500);           // cents
+$sub->creditBalance();           // int, cents
+
+// Or let swapAndInvoice bank it automatically on a downgrade:
+$sub->swapAndInvoice('price_basic', ['prorate' => true]);   // banks credit, charges nothing
+```
+
+At renewal, `cashier:renew` applies `min(credit_balance, cycle_amount)` first:
+- **Full coverage** → no gateway call; records a `type: 'credit'` transaction and advances the schedule.
+- **Partial coverage** → charges the remainder via the token; stamps `metadata.credit_applied` so the ledger reconciles (`charge.total + credit_applied === gross`).
+- **No token + partial coverage** → flagged `requires_payment_method`, credit untouched.
+
+The decrement is relative (`credit_balance - N`) in the same atomic write that advances `renews_at`, so a concurrent `addCredit()` can't be clobbered and a retry can't double-spend. Note: a crash between the credit transaction and the schedule advance can leave a duplicate `type: 'credit'` ledger row (no financial double-spend — same risk class as a charge-then-crash).
+
 ### Schedule renewals
 
 Each token-based subscription records a `renews_at`. The bundled `cashier:renew` command charges only the subscriptions that are **actually due**, advances `renews_at` by one interval on success, and marks `past_due` (retried after the grace period, with a `SubscriptionChargeFailed` event) on failure. Subscriptions due with no saved token are flagged `requires_payment_method` and surfaced via the same event, so you can tell "needs a card" apart from "card declined." Renewals run inside a per-subscription cache lock and re-check `renews_at` under the lock, so overlapping runs can't double-charge. Just schedule it:

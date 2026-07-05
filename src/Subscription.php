@@ -41,6 +41,7 @@ class Subscription extends Model
         'renews_at' => 'datetime',
         'current_period_start' => 'datetime',
         'current_period_end' => 'datetime',
+        'credit_balance' => 'integer',
     ];
 
     /**
@@ -599,12 +600,26 @@ class Subscription extends Model
      * Changes chip_price_id at once (clearing any pending change) and charges the
      * saved token. By default it charges the new plan's full amount; pass
      * ['amount' => n] — e.g. the result of prorationFor() — to charge a specific
-     * figure instead. A non-positive amount charges nothing (a token can't
-     * refund a downgrade credit; deciding what to do with it is up to you). The
+     * figure instead. Pass ['prorate' => true] to auto-bank a downgrade's unused
+     * value as credit_balance (cashier:renew spends it at the next renewal)
+     * instead of charging nothing; an explicit 'amount' always wins. The
      * billing anchor (renews_at) is left unchanged.
      */
     public function swapAndInvoice($priceId, array $options = []): self
     {
+        // Auto-bank downgrade credit before switching — prorationFor() reads the
+        // CURRENT plan's period/amount, so it must run before fill+save.
+        $bankedCredit = false;
+
+        if (($options['prorate'] ?? false) && ! isset($options['amount'])) {
+            $proration = $this->prorationFor($priceId);
+
+            if ($proration < 0) {
+                $this->addCredit(abs($proration));
+                $bankedCredit = true;
+            }
+        }
+
         $attributes = ['chip_price_id' => $priceId, 'pending_plan_id' => null];
 
         if (isset($options['quantity'])) {
@@ -614,6 +629,12 @@ class Subscription extends Model
         $this->fill($attributes)->save();
 
         event(new \Aizuddinmanap\CashierChip\Events\SubscriptionUpdated($this));
+
+        // A downgrade that banked credit charges nothing now — the unused value
+        // covers the new (cheaper) plan's cycle at the next renewal.
+        if ($bankedCredit) {
+            return $this;
+        }
 
         $owner = $this->owner()->first();
         $amount = (int) ($options['amount'] ?? $this->amount());
@@ -662,6 +683,58 @@ class Subscription extends Model
             'reference' => $this->id,
             'currency' => $this->currency(),
         ], $options));
+    }
+
+    /**
+     * Bank proration credit from a downgrade (cents). Atomic increment — safe
+     * against a concurrent cashier:renew run reading credit_balance.
+     */
+    public function addCredit(int $cents): void
+    {
+        if ($cents <= 0) {
+            return;
+        }
+
+        $this->increment('credit_balance', $cents);
+        $this->refresh();
+    }
+
+    /**
+     * Current credit balance (cents).
+     */
+    public function creditBalance(): int
+    {
+        return (int) $this->credit_balance;
+    }
+
+    /**
+     * Record a credit-only renewal (no gateway call) when credit_balance covers
+     * the full cycle. The ledger stays complete; cashier:renew still advances
+     * the schedule and dispatches SubscriptionRenewed.
+     */
+    public function recordCreditOnlyRenewal(int $amount): \Aizuddinmanap\CashierChip\Transaction
+    {
+        $owner = $this->owner()->first();
+
+        if (! $owner) {
+            throw new \Exception('Subscription has no owner.');
+        }
+
+        return $owner->transactions()->create([
+            'id' => 'txn_' . uniqid(),
+            'chip_id' => null,
+            'total' => $amount,
+            'currency' => $this->currency(),
+            'status' => 'success',
+            'type' => 'credit',
+            'description' => 'Subscription Renewal (credit): ' . $this->name,
+            'payment_method' => 'credit_balance',
+            'processed_at' => now(),
+            'metadata' => [
+                'credit_applied' => $amount,
+                'renewal' => true,
+            ],
+        ]);
     }
 
     /**

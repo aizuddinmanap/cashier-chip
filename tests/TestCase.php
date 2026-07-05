@@ -87,6 +87,7 @@ abstract class TestCase extends Orchestra
             $table->timestamp('renews_at')->nullable();
             $table->timestamp('current_period_start')->nullable();
             $table->timestamp('current_period_end')->nullable();
+            $table->integer('credit_balance')->default(0);
             $table->timestamps();
 
             $table->index(['user_id', 'chip_status']);

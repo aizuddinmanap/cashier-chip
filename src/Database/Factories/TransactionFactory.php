@@ -98,4 +98,16 @@ class TransactionFactory extends Factory
     {
         return $this->state(['type' => 'refund']);
     }
+
+    /**
+     * A credit-only renewal (credit_balance covered the full cycle, no gateway).
+     */
+    public function credit(): self
+    {
+        return $this->state([
+            'type' => 'credit',
+            'payment_method' => 'credit_balance',
+            'status' => 'success',
+        ]);
+    }
 }

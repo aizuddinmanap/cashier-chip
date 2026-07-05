@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -76,16 +77,6 @@ class RenewCommand extends Command
                 continue;
             }
 
-            // A renewal also needs a saved token. Distinguish this from a
-            // declined card: a missing token means the customer must re-add a
-            // card, not that dunning should retry. Flag it and let the app
-            // react (distinct from a hard charge failure).
-            if (! $this->hasRenewalToken($subscription)) {
-                $noToken++;
-                $this->flagMissingToken($subscription);
-                continue;
-            }
-
             // Serialize per-subscription so overlapping runs (scheduler overlap
             // or a manual run alongside the scheduled one) can't double-charge.
             // The charge + schedule advance happen inside the lock; we re-check
@@ -110,6 +101,7 @@ class RenewCommand extends Command
             match ($outcome['status']) {
                 'renewed' => $renewed++,
                 'past_due' => $pastDue++,
+                'no_token' => $noToken++,
                 'skipped' => $skipped++,
                 default => null,
             };
@@ -168,8 +160,24 @@ class RenewCommand extends Command
             return ['status' => 'skipped'];
         }
 
+        // Spend credit before the token. Credit covers part (or all) of the
+        // cycle; the token is only charged for the remainder, if any.
+        $gross = $subscription->amount();
+        $creditUsed = min($subscription->credit_balance, $gross);
+        $net = $gross - $creditUsed;
+
+        // A partial-credit charge still needs a token. Credit does NOT bypass
+        // the missing-token flag when net > 0 — and credit is left untouched.
+        if ($net > 0 && ! $this->hasRenewalToken($subscription)) {
+            $this->flagMissingToken($subscription);
+
+            return ['status' => 'no_token'];
+        }
+
         try {
-            $transaction = $subscription->renew();
+            $transaction = $net > 0
+                ? $subscription->renew(['amount' => $net])
+                : $subscription->recordCreditOnlyRenewal($gross);
             $charged = $transaction && in_array($transaction->status, ['success', 'pending'], true);
         } catch (\Throwable $e) {
             $transaction = null;
@@ -181,24 +189,47 @@ class RenewCommand extends Command
         }
 
         if ($charged) {
-            // Capture the period just paid for (current renews_at) before
-            // advancing, then record [old renews_at, new renews_at] as the
-            // authoritative current_period_start/end.
+            // Reconcile the partial-credit charge: stamp credit_applied so the
+            // ledger reconciles (charge.total + credit_applied === gross).
+            if ($net > 0 && $creditUsed > 0) {
+                $transaction->update(['metadata' => array_merge(
+                    $transaction->metadata ?? [],
+                    ['credit_applied' => $creditUsed]
+                )]);
+            }
+
             $oldRenewsAt = $subscription->renews_at;
             $newRenewsAt = $subscription->nextRenewalFrom($now);
 
-            $subscription->update([
+            // Advance schedule + consume credit in ONE atomic update. Done at
+            // the query-builder level (not via $subscription->update()) because
+            // the relative DB::raw decrement can't pass through the model's
+            // integer cast on credit_balance. The relative decrement survives a
+            // concurrent addCredit() from swapAndInvoice(); renews_at stays the
+            // sole idempotency boundary.
+            $update = [
                 'chip_status' => 'active',
                 'renews_at' => $newRenewsAt,
                 'current_period_start' => $oldRenewsAt,
                 'current_period_end' => $newRenewsAt,
-            ]);
+            ];
+
+            if ($creditUsed > 0) {
+                $update['credit_balance'] = DB::raw('credit_balance - '.$creditUsed);
+            }
+
+            $subscription->newQuery()
+                ->whereKey($subscription->getKey())
+                ->update($update);
+
+            $subscription->refresh();
             Event::dispatch(new SubscriptionRenewed($subscription, $transaction));
 
             return ['status' => 'renewed'];
         }
 
         // Dunning: past_due now, retry after the grace period, notify the app.
+        // Credit is NOT consumed (the decrement only happens on success above).
         $subscription->update([
             'chip_status' => 'past_due',
             'renews_at' => $now->copy()->addDays($grace),
